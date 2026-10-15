@@ -851,14 +851,16 @@ GPUOperation CreateSiluMulOp(const TensorDescriptor& gate_desc,
                              const TensorDescriptor& up_desc,
                              const TensorDescriptor& dst_desc) {
   ElementwiseDescriptor op_desc;
-  op_desc.code = R"(
+  op_desc.code = absl::Substitute(
+      R"(
       float4 gate_f32 = ucl::Convert<float4>(in_value);
       float4 up_f32 = ucl::Convert<float4>(in2_value);
       float4 sig_val = 1.0f / (1.0f + exp(-gate_f32));
       float4 silu_val = gate_f32 * sig_val;
       float4 res_f32 = clamp(silu_val * up_f32, ucl::Init<float4>(-65504.0f), ucl::Init<float4>(65504.0f));
-      out_value = ucl::Convert<args.dst_tensor::type>(res_f32);
-  )";
+      out_value = ucl::Convert<$0>(res_f32);
+  )",
+      ToUclDataType(dst_desc.GetDataType(), 4));
   OperationDef definition;
   definition.src_tensors.push_back(gate_desc);
   definition.src_tensors.push_back(up_desc);
@@ -924,10 +926,10 @@ TensorHandle Linear(BuildContext& ctx, const TensorHandle& src,
 //   3. Down projection (.mlp.down_proj)
 TensorHandle FFLayer(BuildContext& ctx, const TensorHandle& src,
                      const std::string& name) {
-  TensorHandle gate = Linear(ctx, src, absl::StrCat(name, ".mlp.gate_proj"),
-                             ctx.config.hidden_dimension);
   TensorHandle up = Linear(ctx, src, absl::StrCat(name, ".mlp.up_proj"),
                            ctx.config.hidden_dimension);
+  TensorHandle gate = Linear(ctx, src, absl::StrCat(name, ".mlp.gate_proj"),
+                             ctx.config.hidden_dimension);
 
   TensorHandle ff_hidden = SiluMul(ctx, gate, up);
 
@@ -1023,9 +1025,11 @@ TensorHandle SelfAttention(BuildContext& ctx, const TensorHandle& src,
   const int batch_size = ctx.config.batch_size;
   const int head_size = ctx.config.head_dimension;
   const int heads_count = ctx.config.number_of_heads;
-  attn = ctx.Reshape(
-      attn, BHWC{batch_size, heads_count, ctx.sequence_size, head_size});
-  attn = ctx.Transpose(attn, BHWC(0, 2, 1, 3));
+  if (ctx.sequence_size > 1) {
+    attn = ctx.Reshape(
+        attn, BHWC{batch_size, heads_count, ctx.sequence_size, head_size});
+    attn = ctx.Transpose(attn, BHWC(0, 2, 1, 3));
+  }
   attn = ctx.Reshape(
       attn, BHWC{batch_size, 1, ctx.sequence_size, heads_count * head_size});
 
@@ -1049,13 +1053,13 @@ TensorHandle TransformerLayer(BuildContext& ctx, const TensorHandle& src,
   x = SelfAttention(ctx, x, attention_mask, position_ids,
                     absl::StrCat(name, ".self_attn"), layer_i, k_cache_in,
                     v_cache_in);
-  x = ctx.Add(residual, x);
+  x = ctx.Add(x, residual);
 
   // 2. Feed-Forward / MLP Block
   residual = x;
   x = RMSNorm(ctx, x, absl::StrCat(name, ".post_attention_layernorm"));
   TensorHandle mlp_output = FFLayer(ctx, x, name);
-  return ctx.Add(residual, mlp_output);
+  return ctx.Add(mlp_output, residual);
 }
 
 // SECTION 4: TOP-LEVEL MODEL ASSEMBLY

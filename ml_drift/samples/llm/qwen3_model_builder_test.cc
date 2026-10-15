@@ -91,6 +91,14 @@ TEST(Qwen3ModelBuilderTest, BuildSmallModelWithFakeWeights) {
   EXPECT_TRUE(status.ok());
   EXPECT_FALSE(prefill_model.nodes.empty());
   EXPECT_FALSE(decode_model.nodes.empty());
+  for (const auto& node : prefill_model.nodes) {
+    EXPECT_NE(node.name, "add");
+    EXPECT_NE(node.name, "silu_mul");
+  }
+  for (const auto& node : decode_model.nodes) {
+    EXPECT_NE(node.name, "add");
+    EXPECT_NE(node.name, "silu_mul");
+  }
   EXPECT_EQ(k_caches_in_handles.size(), 2);
   EXPECT_EQ(v_caches_in_handles.size(), 2);
 }
@@ -150,6 +158,14 @@ TEST(Qwen3ModelBuilderTest, BuildSmallModelWithInt8Weights) {
   EXPECT_TRUE(status.ok());
   EXPECT_FALSE(prefill_model.nodes.empty());
   EXPECT_FALSE(decode_model.nodes.empty());
+  for (const auto& node : prefill_model.nodes) {
+    EXPECT_NE(node.name, "add");
+    EXPECT_NE(node.name, "silu_mul");
+  }
+  for (const auto& node : decode_model.nodes) {
+    EXPECT_NE(node.name, "add");
+    EXPECT_NE(node.name, "silu_mul");
+  }
   EXPECT_EQ(k_caches_in_handles.size(), 2);
   EXPECT_EQ(v_caches_in_handles.size(), 2);
 }
@@ -209,6 +225,14 @@ TEST(Qwen3ModelBuilderTest, BuildSmallModelWithFloatWeights) {
   EXPECT_TRUE(status.ok());
   EXPECT_FALSE(prefill_model.nodes.empty());
   EXPECT_FALSE(decode_model.nodes.empty());
+  for (const auto& node : prefill_model.nodes) {
+    EXPECT_NE(node.name, "add");
+    EXPECT_NE(node.name, "silu_mul");
+  }
+  for (const auto& node : decode_model.nodes) {
+    EXPECT_NE(node.name, "add");
+    EXPECT_NE(node.name, "silu_mul");
+  }
   EXPECT_EQ(k_caches_in_handles.size(), 2);
   EXPECT_EQ(v_caches_in_handles.size(), 2);
 }
@@ -269,6 +293,14 @@ TEST(Qwen3ModelBuilderTest, BuildSmallModelWithMixedInt8EmbedInt4Weights) {
   EXPECT_TRUE(status.ok());
   EXPECT_FALSE(prefill_model.nodes.empty());
   EXPECT_FALSE(decode_model.nodes.empty());
+  for (const auto& node : prefill_model.nodes) {
+    EXPECT_NE(node.name, "add");
+    EXPECT_NE(node.name, "silu_mul");
+  }
+  for (const auto& node : decode_model.nodes) {
+    EXPECT_NE(node.name, "add");
+    EXPECT_NE(node.name, "silu_mul");
+  }
   EXPECT_EQ(k_caches_in_handles.size(), 2);
   EXPECT_EQ(v_caches_in_handles.size(), 2);
 }

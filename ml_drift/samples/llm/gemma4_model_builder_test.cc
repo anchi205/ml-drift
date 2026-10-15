@@ -97,6 +97,14 @@ TEST(Gemma4ModelBuilderTest, BuildSmallModelWithFakeWeights) {
   EXPECT_TRUE(status.ok());
   EXPECT_FALSE(prefill_model.nodes.empty());
   EXPECT_FALSE(decode_model.nodes.empty());
+  for (const auto& node : prefill_model.nodes) {
+    EXPECT_NE(node.name, "add");
+    EXPECT_NE(node.name, "gelu_tanh_mul");
+  }
+  for (const auto& node : decode_model.nodes) {
+    EXPECT_NE(node.name, "add");
+    EXPECT_NE(node.name, "gelu_tanh_mul");
+  }
   EXPECT_EQ(k_caches_in_handles.size(), 2);
   EXPECT_EQ(v_caches_in_handles.size(), 2);
 }
@@ -160,6 +168,14 @@ TEST(Gemma4ModelBuilderTest, BuildSmallModelWithInt8Weights) {
   EXPECT_TRUE(status.ok());
   EXPECT_FALSE(prefill_model.nodes.empty());
   EXPECT_FALSE(decode_model.nodes.empty());
+  for (const auto& node : prefill_model.nodes) {
+    EXPECT_NE(node.name, "add");
+    EXPECT_NE(node.name, "gelu_tanh_mul");
+  }
+  for (const auto& node : decode_model.nodes) {
+    EXPECT_NE(node.name, "add");
+    EXPECT_NE(node.name, "gelu_tanh_mul");
+  }
   EXPECT_EQ(k_caches_in_handles.size(), 2);
   EXPECT_EQ(v_caches_in_handles.size(), 2);
 }
@@ -223,6 +239,14 @@ TEST(Gemma4ModelBuilderTest, BuildSmallModelWithFloatWeights) {
   EXPECT_TRUE(status.ok());
   EXPECT_FALSE(prefill_model.nodes.empty());
   EXPECT_FALSE(decode_model.nodes.empty());
+  for (const auto& node : prefill_model.nodes) {
+    EXPECT_NE(node.name, "add");
+    EXPECT_NE(node.name, "gelu_tanh_mul");
+  }
+  for (const auto& node : decode_model.nodes) {
+    EXPECT_NE(node.name, "add");
+    EXPECT_NE(node.name, "gelu_tanh_mul");
+  }
   EXPECT_EQ(k_caches_in_handles.size(), 2);
   EXPECT_EQ(v_caches_in_handles.size(), 2);
 }
@@ -287,6 +311,14 @@ TEST(Gemma4ModelBuilderTest, BuildSmallModelWithMixedInt8EmbedInt4Weights) {
   EXPECT_TRUE(status.ok());
   EXPECT_FALSE(prefill_model.nodes.empty());
   EXPECT_FALSE(decode_model.nodes.empty());
+  for (const auto& node : prefill_model.nodes) {
+    EXPECT_NE(node.name, "add");
+    EXPECT_NE(node.name, "gelu_tanh_mul");
+  }
+  for (const auto& node : decode_model.nodes) {
+    EXPECT_NE(node.name, "add");
+    EXPECT_NE(node.name, "gelu_tanh_mul");
+  }
   EXPECT_EQ(k_caches_in_handles.size(), 2);
   EXPECT_EQ(v_caches_in_handles.size(), 2);
 }
@@ -351,6 +383,14 @@ TEST(Gemma4ModelBuilderTest, BuildSmallModelWithMixedFloatEmbedInt4Weights) {
   EXPECT_TRUE(status.ok());
   EXPECT_FALSE(prefill_model.nodes.empty());
   EXPECT_FALSE(decode_model.nodes.empty());
+  for (const auto& node : prefill_model.nodes) {
+    EXPECT_NE(node.name, "add");
+    EXPECT_NE(node.name, "gelu_tanh_mul");
+  }
+  for (const auto& node : decode_model.nodes) {
+    EXPECT_NE(node.name, "add");
+    EXPECT_NE(node.name, "gelu_tanh_mul");
+  }
   EXPECT_EQ(k_caches_in_handles.size(), 2);
   EXPECT_EQ(v_caches_in_handles.size(), 2);
 }
