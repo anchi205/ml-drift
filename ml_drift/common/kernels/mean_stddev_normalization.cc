@@ -168,8 +168,14 @@ int3 GetRecommendedWorkGroupSize(const GpuInfo& gpu_info, const BHWC& shape) {
     if (!gpu_info.IsMali()) {
       desired_work_group_size = gpu_info.GetMaxWorkGroupSizeForZ();
     }
-    desired_work_group_size =
-        std::min(desired_work_group_size, gpu_info.GetMaxWorkGroupSizeForZ());
+    if (gpu_info.GetMaxWorkGroupSizeForZ() > 0) {
+      desired_work_group_size =
+          std::min(desired_work_group_size, gpu_info.GetMaxWorkGroupSizeForZ());
+    }
+    if (gpu_info.GetMaxWorkGroupTotalSize() > 0) {
+      desired_work_group_size = std::min(desired_work_group_size,
+                                         gpu_info.GetMaxWorkGroupTotalSize());
+    }
     while (desired_work_group_size >= tensor_slices * 2 &&
            desired_work_group_size > 1) {
       desired_work_group_size /= 2;
@@ -193,17 +199,36 @@ int3 GetRecommendedWorkGroupSize(const GpuInfo& gpu_info, const BHWC& shape) {
       };
       work_group_size.z = slices_to_group_size[tensor_slices];
     }
-    desired_work_group_size =
-        std::min(desired_work_group_size, gpu_info.GetMaxWorkGroupTotalSize());
+    if (gpu_info.GetMaxWorkGroupSizeForZ() > 0) {
+      work_group_size.z =
+          std::min(work_group_size.z, gpu_info.GetMaxWorkGroupSizeForZ());
+    }
+    if (gpu_info.GetMaxWorkGroupTotalSize() > 0) {
+      desired_work_group_size = std::min(desired_work_group_size,
+                                         gpu_info.GetMaxWorkGroupTotalSize());
+    }
     work_group_size.x =
-        desired_work_group_size / AlignByN(work_group_size.z, 4);
+        std::max(1, desired_work_group_size / AlignByN(work_group_size.z, 4));
     work_group_size.y = 1;
     while (work_group_size.x >= (shape.b * shape.w) * 2) {
       work_group_size.x /= 2;
       work_group_size.y *= 2;
     }
+    if (gpu_info.GetMaxWorkGroupSizeForX() > 0) {
+      while (work_group_size.x > gpu_info.GetMaxWorkGroupSizeForX() &&
+             work_group_size.x > 1) {
+        work_group_size.x /= 2;
+        work_group_size.y *= 2;
+      }
+    }
     while (work_group_size.y >= shape.h * 2) {
       work_group_size.y /= 2;
+    }
+    if (gpu_info.GetMaxWorkGroupSizeForY() > 0) {
+      while (work_group_size.y > gpu_info.GetMaxWorkGroupSizeForY() &&
+             work_group_size.y > 1) {
+        work_group_size.y /= 2;
+      }
     }
   }
   return work_group_size;

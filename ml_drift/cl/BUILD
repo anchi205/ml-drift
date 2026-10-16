@@ -282,6 +282,7 @@ cc_library(
         "//ml_drift/common/task:compiler_options",
         "//ml_drift/common/task:gpu_operation",
         "//ml_drift/common/task:tuning_type",
+        "//ml_drift/common/task:work_group_picking",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",

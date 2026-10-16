@@ -1525,9 +1525,10 @@ void GPUOperation::GetPossibleDispatches(
   dispatches->resize(work_group_sizes.size());
   for (size_t i = 0; i < work_group_sizes.size(); ++i) {
     auto& dispatch_info = (*dispatches)[i];
-    dispatch_info.work_group_size = work_group_sizes[i];
+    dispatch_info.work_group_size =
+        ClampWorkGroupSize(work_group_sizes[i], gpu_info, kernel_info);
     dispatch_info.work_groups_count = GetWorkGroupsCountInternal(
-        grid_dimension_, grid_size_, work_group_sizes[i],
+        grid_dimension_, grid_size_, dispatch_info.work_group_size,
         work_group_launch_order_);
   }
 }
