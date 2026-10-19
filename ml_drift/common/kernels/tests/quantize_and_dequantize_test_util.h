@@ -39,6 +39,12 @@ absl::Status QuantAndDequant_Dim2Bits16_NegativeRangeTest(
     TestExecutionEnvironment& env, CalculationsPrecision precision,
     TensorStorageType storage);
 
+// Checks that 8-bit fake quantization of small values rounds to the same codes
+// as F32 arithmetic, even when tensors are F16.
+absl::Status QuantAndDequant_Bits8_SmallValuesPrecisionTest(
+    TestExecutionEnvironment& env, CalculationsPrecision precision,
+    TensorStorageType storage);
+
 absl::Status QuantizationUint8Test(TestExecutionEnvironment& env,
                                    TensorStorageType float_storage,
                                    DataType float_type,

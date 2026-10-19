@@ -399,6 +399,63 @@ absl::Status QuantAndDequant_Dim2Bits16_NegativeRangeTest(
   return absl::OkStatus();
 }
 
+absl::Status QuantAndDequant_Bits8_SmallValuesPrecisionTest(
+    TestExecutionEnvironment& env, CalculationsPrecision precision,
+    TensorStorageType storage) {
+  // Values k / 1024 are exactly representable in F16, so any code mismatch
+  // comes from the kernel arithmetic rather than from the input upload.
+  constexpr int kMaxK = 300;
+  TensorFloat32 src_tensor;
+  src_tensor.shape = BHWC(1, 1, 2 * kMaxK + 1, 1);
+  src_tensor.data.reserve(2 * kMaxK + 1);
+  for (int k = -kMaxK; k <= kMaxK; ++k) {
+    src_tensor.data.push_back(k / 1024.0f);
+  }
+
+  // Symmetric 8-bit range with zero point 128, as used by static range
+  // quantization (SRQ). Inputs span roughly +-29 quantization steps.
+  QuantizeAndDequantizeAttributes attr;
+  NudgeQuantizationRange(/**original_min**/ -1.28f, /**original_max**/ 1.27f,
+                         /*quant_min=*/0, /*quant_max=*/255, &attr.min,
+                         &attr.max, &attr.scale);
+
+  OperationDef op_def;
+  const DataType data_type = DeduceDataTypeFromPrecision(precision);
+  op_def.src_tensors.push_back({data_type, storage, Layout::kHWC});
+  op_def.dst_tensors.push_back({data_type, storage, Layout::kHWC});
+  TensorFloat32 dst_tensor;
+  GPUOperation operation = CreateQuantizeAndDequantize(op_def, attr);
+  ABSL_RETURN_IF_ERROR(env.ExecuteGPUOperation(
+      src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
+      src_tensor.shape, &dst_tensor));
+
+  // A half-precision kernel computing (x - min) / scale lands in [0, 255],
+  // where F16 spacing is 0.125-0.25, and rounds ~5% of these codes
+  // differently than F32 arithmetic would.
+  int checked = 0;
+  int mismatches = 0;
+  for (int i = 0; i < src_tensor.data.size(); ++i) {
+    const double t = static_cast<double>(src_tensor.data[i]) / attr.scale;
+    if (std::abs(t - std::floor(t) - 0.5) < 0.02) {
+      continue;  // Skip near-ties, which may legitimately round either way.
+    }
+    ++checked;
+    const double expected = std::floor(t + 0.5) * attr.scale;
+    // Output rounding error is far below half a quantization step, so a
+    // larger difference means a different code.
+    if (std::abs(dst_tensor.data[i] - expected) > 0.5 * attr.scale) {
+      ++mismatches;
+    }
+  }
+  if (data_type == DataType::kFloat32) {
+    EXPECT_EQ(mismatches, 0);
+  } else {
+    EXPECT_LE(mismatches, checked / 100)
+        << mismatches << " of " << checked << " codes differ from F32";
+  }
+  return absl::OkStatus();
+}
+
 absl::Status QuantizationUint8Test(TestExecutionEnvironment& env,
                                    TensorStorageType float_storage,
                                    DataType float_type,

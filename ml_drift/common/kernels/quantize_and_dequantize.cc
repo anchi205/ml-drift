@@ -14,6 +14,7 @@
 
 #include "ml_drift/common/kernels/quantize_and_dequantize.h"
 
+#include <cmath>
 #include <memory>
 #include <string>
 #include <utility>
@@ -60,22 +61,56 @@ GPUOperation CreateQuantizeAndOrDequantize(
     op_code = R"(
 $0 clamped_value = min(ucl::Init<$0>(args.max), max(ucl::Init<$0>(args.min), in_value));
 $0 quantized_value = round((clamped_value - ucl::Init<$0>(args.min)) / ucl::Init<$0>(args.scale));)";
-  } else {
-    op_desc.args.AddFloat("inverse_scale", 1.0f / adjusted_attr.scale,
-                          src_type);
-    op_code = R"(
-$0 clamped_value = min(ucl::Init<$0>(args.max), max(ucl::Init<$0>(args.min), in_value));
-$0 quantized_value = round((clamped_value - ucl::Init<$0>(args.min)) * ucl::Init<$0>(args.inverse_scale));)";
-  }
-
-  op_code += "\n";
-  if (is_quantize_only) {
-    op_code += R"(
+    op_code += '\n';
+    if (is_quantize_only) {
+      op_code += R"(
 out_value = quantized_value;)";
-  } else {
-    op_code += R"(
+    } else {
+      op_code += R"(
 $0 dequantized_value = quantized_value * ucl::Init<$0>(args.scale) + ucl::Init<$0>(args.min);
 out_value = dequantized_value;)";
+    }
+  } else {
+    // Quantize around the zero point zp = -min / scale rather than computing
+    // (x - min) / scale directly: the latter lands in [0, 2^bits - 1], where
+    // F16 can only resolve 0.125-0.25, so ~5% of codes would round differently
+    // than in F32. zp is split on the host into an integer part (added back
+    // exactly at the end) and a fractional part in [-0.5, 0.5], so the
+    // rounded value stays around [-2^(bits-1), 2^(bits-1)] with F16 spacing
+    // <= 0.0625. Rounding uses floor(t + 0.5) (round half up) because t can be
+    // negative, and round() would round negative ties away from zero, unlike
+    // the direct form whose argument is never negative.
+    const float inverse_scale = 1.0f / adjusted_attr.scale;
+    const float zero_point = -adjusted_attr.min * inverse_scale;
+    const float zero_point_int = std::round(zero_point);
+    const float zero_point_frac = zero_point - zero_point_int;
+    op_desc.args.AddFloat("inverse_scale", inverse_scale, src_type);
+    op_desc.args.AddFloat("zero_point_frac_plus_half", zero_point_frac + 0.5f,
+                          src_type);
+    op_desc.args.AddFloat(
+        "q_min",
+        std::floor(adjusted_attr.min * inverse_scale + zero_point_frac + 0.5f),
+        src_type);
+    op_desc.args.AddFloat(
+        "q_max",
+        std::floor(adjusted_attr.max * inverse_scale + zero_point_frac + 0.5f),
+        src_type);
+    op_code = R"(
+$0 clamped_value = min(ucl::Init<$0>(args.max), max(ucl::Init<$0>(args.min), in_value));
+$0 centered_q = floor(clamped_value * ucl::Init<$0>(args.inverse_scale) + ucl::Init<$0>(args.zero_point_frac_plus_half));
+centered_q = min(ucl::Init<$0>(args.q_max), max(ucl::Init<$0>(args.q_min), centered_q));)";
+    op_code += '\n';
+    if (is_quantize_only) {
+      op_desc.args.AddFloat("zero_point_int", zero_point_int, src_type);
+      op_code += R"(
+out_value = centered_q + ucl::Init<$0>(args.zero_point_int);)";
+    } else {
+      // (q - zp) * scale = (centered_q - zero_point_frac) * scale.
+      op_desc.args.AddFloat("dequant_offset",
+                            -zero_point_frac * adjusted_attr.scale, src_type);
+      op_code += R"(
+out_value = centered_q * ucl::Init<$0>(args.scale) + ucl::Init<$0>(args.dequant_offset);)";
+    }
   }
   op_desc.code = absl::Substitute(op_code, in_out_type);
 
