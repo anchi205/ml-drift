@@ -496,6 +496,43 @@ mld_kernel_test(
 )
 
 cc_library(
+    name = "conv_wave_matrix_mali_f16_test_util",
+    testonly = 1,
+    srcs = ["conv_wave_matrix_mali_f16_test_util.cc"],
+    hdrs = ["conv_wave_matrix_mali_f16_test_util.h"],
+    deps = [
+        "//ml_drift/common:data_type",
+        "//ml_drift/common:operations",
+        "//ml_drift/common:precision",
+        "//ml_drift/common:shape",
+        "//ml_drift/common:tensor",
+        "//ml_drift/common/kernels:conv_wave_matrix_mali_f16",
+        "//ml_drift/common/task:tensor_desc",
+        "//ml_drift/common/task:testing_ref_ops",
+        "//ml_drift/common/task:testing_util",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+mld_kernel_test(
+    name = "conv_wave_matrix_mali_f16_test",
+    srcs = [
+        "conv_wave_matrix_mali_f16_test.cc",
+    ],
+    platforms = ["opencl"],
+    deps = [
+        ":conv_wave_matrix_mali_f16_test_util",
+        "//ml_drift/common:data_type",
+        "//ml_drift/common/task:tensor_desc",
+        "//ml_drift/common/task:testing_util",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "conv_wave_matrix_mali_test_util",
     testonly = 1,
     srcs = ["conv_wave_matrix_mali_test_util.cc"],
@@ -2015,6 +2052,7 @@ test_suite(
         ":conv_generic_test_opencl",
         ":conv_transpose_test_opencl",
         ":conv_transpose_thin_test_opencl",
+        ":conv_wave_matrix_mali_f16_test_opencl",
         ":conv_wave_matrix_mali_test_opencl",
         ":conv_wave_matrix_test_opencl",
         ":depthwise_conv_test_opencl",
