@@ -13,7 +13,12 @@
 # limitations under the License.
 
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test", "objc_library")
-load("//ml_drift:pytype.default.bzl", "pytype_strict_binary", "pytype_strict_contrib_test", "pytype_strict_library")
+load(
+    "//ml_drift:pytype.default.bzl",
+    "pytype_strict_binary",
+    "pytype_strict_contrib_test",
+    "pytype_strict_library",
+)
 
 package(licenses = ["notice"])
 
