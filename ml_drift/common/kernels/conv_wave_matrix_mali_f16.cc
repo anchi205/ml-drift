@@ -68,18 +68,19 @@ MAIN_FUNCTION($0) {
   c += "  int subgroup_local_id = " + GetGlobalID(0) + " % 16;\n";
   c += "  int slices_sub_id = subgroup_local_id % 2;\n";
   c += "  int x_sub_id = subgroup_local_id / 2;\n";
-  c += "  int SRC_X = subgroup_id * " + std::to_string(x_block_size * 8) +
-       " + x_sub_id;\n";
-  c += "  int warp_dst_s_base = " + GetGlobalID(1) + " * " +
+  c += "  int subgroup_base_x = subgroup_id * " +
+       std::to_string(x_block_size * 8) + ";\n";
+  c += "  int subgroup_dst_s_base = " + GetGlobalID(1) + " * " +
        std::to_string(s_block_size * 4) + ";\n";
   c += "  int y = " + GetGlobalID(2) + ";\n";
   c += R"(
 
-  if (SRC_X >= args.dst.Width() || y >= args.dst.Height() || warp_dst_s_base >= args.dst.Slices()) {
+  if (subgroup_base_x >= args.dst.Width() || y >= args.dst.Height() || subgroup_dst_s_base >= args.dst.Slices()) {
     return;
   }
+  int SRC_X = subgroup_base_x + x_sub_id;
 
-  __global half8* w_base = (__global half8*)(args.weights.GetPtr() + warp_dst_s_base * 4 * args.src.Slices());
+  __global half8* w_base = (__global half8*)(args.weights.GetPtr() + subgroup_dst_s_base * 4 * args.src.Slices());
 
   )";
   for (int s = 0; s < s_block_size; s++) {
@@ -121,19 +122,26 @@ MAIN_FUNCTION($0) {
   c += R"(
   }
 
-  int DST_S = warp_dst_s_base + subgroup_local_id % 4;
+  int DST_S = subgroup_dst_s_base + subgroup_local_id % 4;
+  int dst_s_final = 0;
 )";
   c += "  int DST_X = subgroup_id * " + std::to_string(x_block_size * 8) +
        " + x_sub_id / 2 * 2;\n";
   for (int s = 0; s < s_block_size; s++) {
     for (int x = 0; x < x_block_size; x++) {
       std::string patch = R"(
-  {
-  half4 rh_w0 = (half4)(r_w$0_s$1.x, r_w$0_s$1.y, r_w$0_s$2.x, r_w$0_s$2.y);
-  half4 rh_w1 = (half4)(r_w$0_s$1.z, r_w$0_s$1.w, r_w$0_s$2.z, r_w$0_s$2.w);
-
-  args.dst.Write(rh_w0, DST_X + $0 * 8 + 0, y, DST_S + $3);
-  args.dst.Write(rh_w1, DST_X + $0 * 8 + 1, y, DST_S + $3);
+  dst_s_final = DST_S + $3;
+  if (dst_s_final < args.dst.Slices()) {
+    int dst_x_final = DST_X + $0 * 8 + 0;
+    if (dst_x_final < args.dst.Width()) {
+      half4 R = (half4)(r_w$0_s$1.x, r_w$0_s$1.y, r_w$0_s$2.x, r_w$0_s$2.y);
+      args.dst.Write(R, dst_x_final, y, dst_s_final);
+    }
+    dst_x_final = DST_X + $0 * 8 + 1;
+    if (dst_x_final < args.dst.Width()) {
+      half4 R = (half4)(r_w$0_s$1.z, r_w$0_s$1.w, r_w$0_s$2.z, r_w$0_s$2.w);
+      args.dst.Write(R, dst_x_final, y, dst_s_final);
+    }
   }
 )";
       c += absl::Substitute(patch, x, s * 2 + 0, s * 2 + 1, s * 4);

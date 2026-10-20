@@ -68,7 +68,7 @@ absl::Status ConvWaveMatrixMaliF161x1BigTest(TestExecutionEnvironment& env,
   attr.weights = weights;
   attr.bias = MakeZeroTensor(Linear(dst_channels));
 
-  auto src_shape = BHWC(1, 1, 64, src_channels);
+  auto src_shape = BHWC(1, 3, 17, src_channels);
 
   TensorFloat32 src_tensor = MakeSyntheticTensor(src_shape);
 

@@ -35,6 +35,9 @@ class BaseTest : public Test, public WithParamInterface<TensorStorageType> {
     if (!exec_env->GetGpuInfo().IsMali()) {
       GTEST_SKIP() << "Gpu is not Mali.";
     }
+    if (!exec_env->GetGpuInfo().mali_info.IsMaliG2()) {
+      GTEST_SKIP() << "Gpu is not Mali G2.";
+    }
     if (!exec_env->GetGpuInfo().SupportsExtension("cl_arm_matrix_multiply")) {
       GTEST_SKIP() << "cl_arm_matrix_multiply not supported on this device.";
     }
