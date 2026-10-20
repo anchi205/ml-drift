@@ -62,6 +62,9 @@ GpuVendor GetGpuVendor(const std::string& gpu_description) {
 AdrenoInfo GetAdrenoInfo(const std::string& gpu_description) {
   const std::map<std::string, AdrenoInfo> kMapping = {
       // Adreno 8xx series
+      {"850", AdrenoInfo{/*adreno_gpu=*/AdrenoGpu::kAdreno850,
+                         /*generation=*/AdrenoInfo::Generation::kGen8,
+                         /*compute_units=*/12}},
       {"840", AdrenoInfo{/*adreno_gpu=*/AdrenoGpu::kAdreno840,
                          /*generation=*/AdrenoInfo::Generation::kGen8,
                          /*compute_units=*/12}},
