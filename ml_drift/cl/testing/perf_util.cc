@@ -40,6 +40,7 @@
 #include "ml_drift/common/kernels/conv_constants.h"
 #include "ml_drift/common/kernels/conv_generic.h"
 #include "ml_drift/common/kernels/conv_wave_matrix_mali.h"
+#include "ml_drift/common/kernels/conv_wave_matrix_mali_f16.h"
 #include "ml_drift/common/kernels/conv_wave_memory.h"
 #include "ml_drift/common/kernels/depthwise_conv.h"
 #include "ml_drift/common/kernels/depthwise_conv_3x3.h"
@@ -81,7 +82,11 @@ absl::Status TestConvolutionPerformance(const Convolution2DAttributes& attr,
   const GpuInfo& gpu_info = env->GetDevicePtr()->GetInfo();
 
   std::unique_ptr<GPUOperation> conv;
-  if (IsConvWaveMemorySupported(gpu_info)) {
+  if (precision == CalculationsPrecision::kF16 &&
+      SupportsConvWaveMatrixMaliF16(gpu_info)) {
+    conv = std::make_unique<ConvWaveMatrixMaliF16>(CreateConvWaveMatrixMaliF16(
+        op_def.src_tensors[0], op_def.dst_tensors[0], attr));
+  } else if (IsConvWaveMemorySupported(gpu_info)) {
     conv = std::make_unique<ConvWaveMemory>(
         CreateConvWaveMemory(gpu_info, op_def, precision, attr, &dst_shape));
   } else if (/* DISABLES CODE */ (true)) {

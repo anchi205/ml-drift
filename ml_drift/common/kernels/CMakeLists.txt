@@ -548,6 +548,28 @@ target_link_libraries(mld_common_kernels_conv_wave_matrix_mali
     mld_common_task_gpu_operation
 )
 
+add_library(mld_common_kernels_conv_wave_matrix_mali_f16 conv_wave_matrix_mali_f16.cc conv_wave_matrix_mali_f16.h)
+target_include_directories(mld_common_kernels_conv_wave_matrix_mali_f16 PUBLIC $<BUILD_INTERFACE:${ML_DRIFT_PARENT_DIR}>)
+target_link_libraries(mld_common_kernels_conv_wave_matrix_mali_f16
+  PUBLIC
+    absl::strings
+    mld_common_data_type
+    mld_common_gpu_info
+    mld_common_kernel_info
+    mld_common_operations
+    mld_common_shape
+    mld_common_task_buffer_desc
+    mld_common_task_compiler_options
+    mld_common_task_gpu_object_desc
+    mld_common_task_gpu_operation
+    mld_common_task_tensor_desc
+    mld_common_task_tuning_type
+    mld_common_task_work_group_picking
+    mld_common_tensor
+    mld_common_types
+    mld_common_util
+)
+
 add_library(mld_common_kernels_gather gather.cc gather.h)
 target_include_directories(mld_common_kernels_gather PUBLIC $<BUILD_INTERFACE:${ML_DRIFT_PARENT_DIR}>)
 target_link_libraries(mld_common_kernels_gather

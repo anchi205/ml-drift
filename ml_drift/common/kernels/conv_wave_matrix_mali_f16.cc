@@ -24,6 +24,7 @@
 #include "ml_drift/common/data_type.h"
 #include "ml_drift/common/gpu_info.h"
 #include "ml_drift/common/kernel_info.h"
+#include "ml_drift/common/operations.h"
 #include "ml_drift/common/shape.h"
 #include "ml_drift/common/task/buffer_desc.h"
 #include "ml_drift/common/task/compiler_options.h"
@@ -244,6 +245,23 @@ int3 ConvWaveMatrixMaliF16::GetGridSize() const {
   const int grid_y = DivideRoundUp(dst_[0]->Slices(), 4 * s_block_size_);
   const int grid_z = dst_[0]->Height();
   return int3(grid_x, grid_y, grid_z);
+}
+
+bool SupportsConvWaveMatrixMaliF16(const GpuInfo& gpu_info) {
+  if (!gpu_info.SupportsExtension("cl_arm_matrix_multiply")) {
+    return false;
+  }
+  if (!gpu_info.mali_info.IsMaliG2()) {
+    return false;
+  }
+  return true;
+}
+
+ConvWaveMatrixMaliF16 CreateConvWaveMatrixMaliF16(
+    const TensorDescriptor& src_desc, const TensorDescriptor& dst_desc,
+    const Convolution2DAttributes& attr) {
+  const auto weights = GetFloatWeights(attr);
+  return ConvWaveMatrixMaliF16(src_desc, dst_desc, weights);
 }
 
 }  // namespace ml_drift

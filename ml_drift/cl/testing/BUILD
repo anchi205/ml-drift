@@ -147,6 +147,7 @@ cc_library(
         "//ml_drift/common/kernels:conv_constants",
         "//ml_drift/common/kernels:conv_generic",
         "//ml_drift/common/kernels:conv_wave_matrix_mali",
+        "//ml_drift/common/kernels:conv_wave_matrix_mali_f16",
         "//ml_drift/common/kernels:conv_wave_memory",
         "//ml_drift/common/kernels:depthwise_conv",
         "//ml_drift/common/kernels:depthwise_conv_3x3",
