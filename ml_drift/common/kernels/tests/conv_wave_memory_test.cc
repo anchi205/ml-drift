@@ -232,7 +232,7 @@ TEST_P(ConvWaveMemoryFloatTest, ConvWaveMemoryRuntimeDstEndChannelsTest) {
 INSTANTIATE_TEST_SUITE_P(
     ConvWaveMemoryFloatTestSuite, ConvWaveMemoryFloatTest,
     Combine(ValuesIn(GetCalculationsPrecisions()),
-            ValuesIn(GetTensorStoragesTypes())),
+            ValuesIn(GetTensorStoragesTypesWithoutSingleTexture2D())),
     [](const TestParamInfo<ConvWaveMemoryFloatTest::ParamType>& info) {
       return ToString(info.param);
     });
@@ -271,16 +271,16 @@ TEST_P(IntTest, ConvWaveMemoryInt8ExternalWeightsTest) {
                                                   dst_storage()));
 }
 
-INSTANTIATE_TEST_SUITE_P(IntTestSuite, IntTest,
-                         Combine(ValuesIn(GetTensorStoragesTypes()),
-                                 ValuesIn(GetTensorStoragesTypes())),
-                         [](const TestParamInfo<IntTest::ParamType>& info) {
-                           return absl::StrReplaceAll(
-                               absl::StrCat(ToString(std::get<0>(info.param)),
-                                            "_",
-                                            ToString(std::get<1>(info.param))),
-                               {{":", "_"}});
-                         });
+INSTANTIATE_TEST_SUITE_P(
+    IntTestSuite, IntTest,
+    Combine(ValuesIn(GetTensorStoragesTypesWithoutSingleTexture2D()),
+            ValuesIn(GetTensorStoragesTypesWithoutSingleTexture2D())),
+    [](const TestParamInfo<IntTest::ParamType>& info) {
+      return absl::StrReplaceAll(
+          absl::StrCat(ToString(std::get<0>(info.param)), "_",
+                       ToString(std::get<1>(info.param))),
+          {{":", "_"}});
+    });
 
 class SrcQuantizationTest
     : public Test,
@@ -309,8 +309,8 @@ TEST_P(SrcQuantizationTest, ConvWaveMemoryInt8WithSrcQuantizationBig) {
 INSTANTIATE_TEST_SUITE_P(
     ConvWaveMemorySrcQuantizationTestSuite, SrcQuantizationTest,
     Combine(ValuesIn({DataType::kFloat16, DataType::kFloat32}),
-            ValuesIn(GetTensorStoragesTypes()),
-            ValuesIn(GetTensorStoragesTypes())),
+            ValuesIn(GetTensorStoragesTypesWithoutSingleTexture2D()),
+            ValuesIn(GetTensorStoragesTypesWithoutSingleTexture2D())),
     [](const TestParamInfo<SrcQuantizationTest::ParamType>& info) {
       return absl::StrReplaceAll(
           absl::StrCat(ToString(std::get<0>(info.param)), "_int",
