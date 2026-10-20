@@ -423,7 +423,6 @@ struct MaliInfo {
   bool IsValhallGen3() const;
   bool IsValhallGen4() const;
   bool IsValhall() const;
-  bool IsGen5() const;
   bool IsMaliG1() const;
   bool IsMaliG2() const;
 

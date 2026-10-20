@@ -1044,8 +1044,6 @@ bool MaliInfo::IsValhall() const {
          IsValhallGen4();
 }
 
-bool MaliInfo::IsGen5() const { return generation == MaliInfo::Gen::kV5; }
-
 bool MaliInfo::IsMaliG1() const {
   return gpu_version == MaliGpu::kG1Pro || gpu_version == MaliGpu::kG1Premium ||
          gpu_version == MaliGpu::kG1Ultra;
@@ -1063,7 +1061,7 @@ int MaliInfo::GetApproximateComputeUnitsCount() const {
   } else if (IsBifrost()) {
     // Mali Bifrost can have 1-32 cores
     return 16;
-  } else if (IsValhall()) {
+  } else {
     if (gpu_version == MaliGpu::kG57) {
       return 6;  // Mali-G57 can have 1-6 cores
     } else if (gpu_version == MaliGpu::kG77) {
@@ -1711,7 +1709,8 @@ bool GpuInfo::SupportsAcceleratedDp4a() const {
            (amd_info.IsArchitectureOrNewer(AMDArchitecture::kRdna1) &&
             !amd_info.IsNavi10());
   } else if (IsMali()) {
-    return mali_info.IsValhall();
+    return mali_info.IsValhall() || mali_info.IsMaliG1() ||
+           mali_info.IsMaliG2();
   } else if (IsBroadcom()) {
     return broadcom_info.IsVideoCore7();
   }

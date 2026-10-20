@@ -57,7 +57,7 @@ ConvWaveMatrixMali::KernelParams GetKernelParams(const MaliInfo& mali_info,
     kernel_params.src_slices_loop_unroll = 2;
   }
   if (src_groups % 4 == 0 &&
-      (kernel_params.dst_s4_block_size == 1 || mali_info.IsGen5())) {
+      (kernel_params.dst_s4_block_size == 1 || mali_info.IsMaliG1())) {
     kernel_params.src_slices_loop_unroll = 4;
   }
   if (mali_info.IsMaliG1()) {
