@@ -259,12 +259,11 @@ absl::Status GetInOutRefs(absl::Span<const uint8_t> serialized_model,
                           std::vector<int64_t>* in_refs,
                           std::vector<int64_t>* out_refs);
 
-absl::Status GraphToInferenceContext(const GpuInfo& gpu_info,
-                                     const GraphFloat32& graph,
-                                     Environment* env,
-                                     CreateGpuModelInfo& create_info,
-                                     InferenceContext* context,
-                                     InferenceContext* weights_prep_context);
+absl::Status GraphToInferenceContext(
+    const GpuInfo& gpu_info, const GraphFloat32& graph, Environment* env,
+    CreateGpuModelInfo& create_info, InferenceContext* context,
+    InferenceContext* weights_prep_context,
+    std::vector<uint8_t>* serialized_model = nullptr);
 
 absl::Status IrModelToInferenceContext(const GpuInfo& gpu_info,
                                        const ir::IrModel& ir_model,

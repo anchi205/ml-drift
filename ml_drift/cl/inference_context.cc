@@ -955,8 +955,9 @@ absl::Status GraphToInferenceContext(const GpuInfo& gpu_info,
                                      Environment* env,
                                      CreateGpuModelInfo& create_info,
                                      InferenceContext* context,
-                                     InferenceContext* weights_prep_context) {
-  if (weights_prep_context != nullptr &&
+                                     InferenceContext* weights_prep_context,
+                                     std::vector<uint8_t>* serialized_model) {
+  if (serialized_model == nullptr && weights_prep_context != nullptr &&
       WeightsManager::IsGpuWeightsPreparationSupported(gpu_info)) {
     GpuModel main_gpu_model, gpu_weights_preparation_model;
     absl::flat_hash_map<ValueId, ValueId> weights_mapping;
@@ -989,8 +990,8 @@ absl::Status GraphToInferenceContext(const GpuInfo& gpu_info,
     GpuModel gpu_model;
     ABSL_RETURN_IF_ERROR(
         GraphToGpuModel(graph, create_info, gpu_info, &gpu_model));
-    ABSL_RETURN_IF_ERROR(
-        context->InitFromGpuModel(create_info, &gpu_model, env));
+    ABSL_RETURN_IF_ERROR(context->InitFromGpuModel(create_info, &gpu_model, env,
+                                                   serialized_model));
   }
   return absl::OkStatus();
 }

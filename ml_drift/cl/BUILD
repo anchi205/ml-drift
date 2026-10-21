@@ -519,6 +519,7 @@ cc_test(
         "//ml_drift/common:gpu_model",
         "//ml_drift/common:gpu_model_builder",
         "//ml_drift/common:model",
+        "//ml_drift/common:operations",
         "//ml_drift/common:precision",
         "//ml_drift/common:shape",
         "//ml_drift/common:tensor",
