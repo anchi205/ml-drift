@@ -573,20 +573,18 @@ absl::Status ConvWaveMemoryInt8WithSrcQuantizationTest(
 absl::Status ConvWaveMemoryTest(TestExecutionEnvironment& env,
                                 CalculationsPrecision precision,
                                 TensorStorageType storage, const BHWC& shape,
-                                int dst_channels) {
-  const int src_channels = shape.c;
+                                const OHWI& weights_shape) {
   Convolution2DAttributes attr;
   attr.padding.prepended = HW(1, 0);
   attr.padding.appended = HW(0, 1);
   attr.strides = HW(1, 2);
   attr.dilations = HW(2, 1);
-  auto synthetic_weights =
-      MakeSyntheticTensor(OHWI(dst_channels, 2, 3, src_channels));
+  auto synthetic_weights = MakeSyntheticTensor(weights_shape);
   auto& attr_weights = attr.weights.emplace<Tensor<OHWI, DataType::kFloat32>>(
       std::move(synthetic_weights));
   attr_weights.data.resize(attr_weights.data.size() +
                            XNN_EXTRA_BYTES / sizeof(float));
-  attr.bias = MakeSyntheticTensor(Linear(dst_channels));
+  attr.bias = MakeSyntheticTensor(Linear(weights_shape.o));
 
   TensorFloat32 src_tensor = MakeSyntheticTensor(shape);
 

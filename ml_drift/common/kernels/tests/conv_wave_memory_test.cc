@@ -54,7 +54,7 @@ TEST_P(ConvWaveMemoryFloatTest, ConvWaveMemoryDst4SlicesTest) {
                  << " storage type: " << ToString(storage());
   }
   ABSL_ASSERT_OK(ConvWaveMemoryTest(*exec_env, precision(), storage(),
-                               BHWC(1, 7, 4, 7), 13));
+                               BHWC(1, 7, 4, 7), OHWI(13, 2, 3, 7)));
 }
 
 TEST_P(ConvWaveMemoryFloatTest, ConvWaveMemoryDst4SlicesBatchedTest) {
@@ -64,7 +64,7 @@ TEST_P(ConvWaveMemoryFloatTest, ConvWaveMemoryDst4SlicesBatchedTest) {
                  << " storage type: " << ToString(storage());
   }
   ABSL_ASSERT_OK(ConvWaveMemoryTest(*exec_env, precision(), storage(),
-                               BHWC(5, 7, 4, 7), 13));
+                               BHWC(5, 7, 4, 7), OHWI(13, 2, 3, 7)));
 }
 
 TEST_P(ConvWaveMemoryFloatTest, ConvWaveMemoryDst9SlicesTest) {
@@ -74,7 +74,7 @@ TEST_P(ConvWaveMemoryFloatTest, ConvWaveMemoryDst9SlicesTest) {
                  << " storage type: " << ToString(storage());
   }
   ABSL_ASSERT_OK(ConvWaveMemoryTest(*exec_env, precision(), storage(),
-                               BHWC(1, 7, 4, 7), 33));
+                               BHWC(1, 7, 4, 7), OHWI(33, 2, 3, 7)));
 }
 
 TEST_P(ConvWaveMemoryFloatTest, ConvWaveMemoryDst9SlicesBatchedTest) {
@@ -84,7 +84,7 @@ TEST_P(ConvWaveMemoryFloatTest, ConvWaveMemoryDst9SlicesBatchedTest) {
                  << " storage type: " << ToString(storage());
   }
   ABSL_ASSERT_OK(ConvWaveMemoryTest(*exec_env, precision(), storage(),
-                               BHWC(7, 7, 4, 7), 33));
+                               BHWC(7, 7, 4, 7), OHWI(33, 2, 3, 7)));
 }
 
 TEST_P(ConvWaveMemoryFloatTest, ConvWaveMemoryDst6SlicesTest) {
@@ -94,7 +94,7 @@ TEST_P(ConvWaveMemoryFloatTest, ConvWaveMemoryDst6SlicesTest) {
                  << " storage type: " << ToString(storage());
   }
   ABSL_ASSERT_OK(ConvWaveMemoryTest(*exec_env, precision(), storage(),
-                               BHWC(1, 5, 3, 7), 23));
+                               BHWC(1, 5, 3, 7), OHWI(23, 2, 3, 7)));
 }
 
 TEST_P(ConvWaveMemoryFloatTest, ConvWaveMemoryDst6SlicesBatchedTest) {
@@ -104,7 +104,7 @@ TEST_P(ConvWaveMemoryFloatTest, ConvWaveMemoryDst6SlicesBatchedTest) {
                  << " storage type: " << ToString(storage());
   }
   ABSL_ASSERT_OK(ConvWaveMemoryTest(*exec_env, precision(), storage(),
-                               BHWC(11, 5, 3, 7), 23));
+                               BHWC(11, 5, 3, 7), OHWI(23, 2, 3, 7)));
 }
 
 TEST_P(ConvWaveMemoryFloatTest, ConvWaveMemoryDst3SlicesTest) {
@@ -114,7 +114,7 @@ TEST_P(ConvWaveMemoryFloatTest, ConvWaveMemoryDst3SlicesTest) {
                  << " storage type: " << ToString(storage());
   }
   ABSL_ASSERT_OK(ConvWaveMemoryTest(*exec_env, precision(), storage(),
-                               BHWC(1, 5, 3, 15), 9));
+                               BHWC(1, 5, 3, 15), OHWI(9, 2, 3, 15)));
 }
 
 TEST_P(ConvWaveMemoryFloatTest, ConvWaveMemoryDst3SlicesBatchedTest) {
@@ -124,7 +124,17 @@ TEST_P(ConvWaveMemoryFloatTest, ConvWaveMemoryDst3SlicesBatchedTest) {
                  << " storage type: " << ToString(storage());
   }
   ABSL_ASSERT_OK(ConvWaveMemoryTest(*exec_env, precision(), storage(),
-                               BHWC(2, 5, 3, 15), 9));
+                               BHWC(2, 5, 3, 15), OHWI(9, 2, 3, 15)));
+}
+
+TEST_P(ConvWaveMemoryFloatTest, ConvWaveMemoryKernelWIs9Test) {
+  const DataType data_type = DeduceDataTypeFromPrecision(precision());
+  if (!exec_env->IsStorageSupported(storage(), data_type)) {
+    GTEST_SKIP() << "Unsupported data type: " << ToString(data_type)
+                 << " storage type: " << ToString(storage());
+  }
+  ABSL_ASSERT_OK(ConvWaveMemoryTest(*exec_env, precision(), storage(),
+                               BHWC(1, 5, 13, 16), OHWI(16, 1, 9, 16)));
 }
 
 TEST_P(ConvWaveMemoryFloatTest, ConvWaveMemoryGroupedX3Test) {

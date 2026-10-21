@@ -721,7 +721,14 @@ ConvWaveMemory::KernelParams GetKernelParamsPowerVR(
           params.precision == CalculationsPrecision::kF16 ? 8 : 4;
 
       if (!params.src_desc.IsLinear() &&
-          (!params.x_kernel_is_1 || !params.y_kernel_is_1)) {
+          (!params.x_kernel_is_1 || !params.y_kernel_is_1) &&
+          params.weights_shape.w <= 8) {
+        // 128 is simd size for this branch
+        // every thread loads 16 bytes of data(float4 or half8)
+        // i4o4 block is 64/32 bytes(f32/f16)
+        // w_shape.w * slices_out(4) is number of i4o4 blocks
+        // w_shape.w * slices_out(4) * 4 must be <= 128 (for f32) => w <= 8
+        // w_shape.w * slices_out(4) * 2 must be <= 128 (for f16) => w <= 16
         kernel_params.slices_loop_first = false;
         kernel_params.slices_in = 1;
         kernel_params.slices_out = 4;
