@@ -37,6 +37,7 @@
 
 namespace ml_drift {
 
+using ::testing::Each;
 using ::testing::FloatNear;
 using ::testing::Pointwise;
 
@@ -453,6 +454,43 @@ absl::Status QuantAndDequant_Bits8_SmallValuesPrecisionTest(
     EXPECT_LE(mismatches, checked / 100)
         << mismatches << " of " << checked << " codes differ from F32";
   }
+  return absl::OkStatus();
+}
+
+absl::Status QuantAndDequant_ZeroScaleTest(TestExecutionEnvironment& env,
+                                           CalculationsPrecision precision,
+                                           TensorStorageType storage) {
+  TensorFloat32 src_tensor;
+  src_tensor.shape = BHWC(1, 1, 4, 1);
+  src_tensor.data = {-1.0f, 0.0f, 0.5f, 2.0f};
+
+  // A degenerate range with min == max, and therefore scale == 0, as produced
+  // for a constant tensor.
+  QuantizeAndDequantizeAttributes attr;
+  attr.min = 0.5f;
+  attr.max = 0.5f;
+  attr.scale = 0.0f;
+
+  const float eps = precision == CalculationsPrecision::kF32 ? 1e-6f : 1e-2f;
+  OperationDef op_def;
+  const DataType data_type = DeduceDataTypeFromPrecision(precision);
+  op_def.src_tensors.push_back({data_type, storage, Layout::kHWC});
+  op_def.dst_tensors.push_back({data_type, storage, Layout::kHWC});
+
+  // Every input maps to code 0, which dequantizes to min.
+  TensorFloat32 dequantized;
+  GPUOperation dequantize_op = CreateQuantizeAndDequantize(op_def, attr);
+  ABSL_RETURN_IF_ERROR(env.ExecuteGPUOperation(
+      src_tensor, std::make_unique<GPUOperation>(std::move(dequantize_op)),
+      src_tensor.shape, &dequantized));
+  EXPECT_THAT(dequantized.data, Each(FloatNear(attr.min, eps)));
+
+  TensorFloat32 quantized;
+  GPUOperation quantize_op = CreateStaticRangeQuantization(op_def, attr);
+  ABSL_RETURN_IF_ERROR(env.ExecuteGPUOperation(
+      src_tensor, std::make_unique<GPUOperation>(std::move(quantize_op)),
+      src_tensor.shape, &quantized));
+  EXPECT_THAT(quantized.data, Each(FloatNear(0.0f, eps)));
   return absl::OkStatus();
 }
 

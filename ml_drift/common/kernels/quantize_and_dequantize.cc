@@ -58,17 +58,15 @@ GPUOperation CreateQuantizeAndOrDequantize(
   const std::string in_out_type = ToUclDataType(src_type, 4);
   std::string op_code;
   if (adjusted_attr.scale == 0.0f) {
-    op_code = R"(
-$0 clamped_value = min(ucl::Init<$0>(args.max), max(ucl::Init<$0>(args.min), in_value));
-$0 quantized_value = round((clamped_value - ucl::Init<$0>(args.min)) / ucl::Init<$0>(args.scale));)";
-    op_code += '\n';
+    // scale == 0 means min == max, so every input maps to code 0, which
+    // dequantizes to min. Emit those constants rather than dividing by scale,
+    // which would produce NaN.
     if (is_quantize_only) {
-      op_code += R"(
-out_value = quantized_value;)";
+      op_code = R"(
+out_value = ucl::Init<$0>(0.0f);)";
     } else {
-      op_code += R"(
-$0 dequantized_value = quantized_value * ucl::Init<$0>(args.scale) + ucl::Init<$0>(args.min);
-out_value = dequantized_value;)";
+      op_code = R"(
+out_value = ucl::Init<$0>(args.min);)";
     }
   } else {
     // Quantize around the zero point zp = -min / scale rather than computing

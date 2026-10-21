@@ -45,6 +45,12 @@ absl::Status QuantAndDequant_Bits8_SmallValuesPrecisionTest(
     TestExecutionEnvironment& env, CalculationsPrecision precision,
     TensorStorageType storage);
 
+// Checks that a degenerate range (min == max, scale == 0) yields min when
+// dequantizing and code 0 when only quantizing, rather than NaN.
+absl::Status QuantAndDequant_ZeroScaleTest(TestExecutionEnvironment& env,
+                                           CalculationsPrecision precision,
+                                           TensorStorageType storage);
+
 absl::Status QuantizationUint8Test(TestExecutionEnvironment& env,
                                    TensorStorageType float_storage,
                                    DataType float_type,

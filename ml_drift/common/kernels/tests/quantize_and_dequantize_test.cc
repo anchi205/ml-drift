@@ -86,6 +86,15 @@ TEST_P(QuantizeAndDequantizeFloatTest,
       *exec_env, precision(), storage()));
 }
 
+TEST_P(QuantizeAndDequantizeFloatTest, QuantAndDequant_ZeroScaleTest) {
+  const DataType data_type = DeduceDataTypeFromPrecision(precision());
+  if (!exec_env->IsStorageSupported(storage(), data_type)) {
+    GTEST_SKIP() << "Unsupported data type: " << ToString(data_type)
+                 << " storage type: " << ToString(storage());
+  }
+  ABSL_ASSERT_OK(QuantAndDequant_ZeroScaleTest(*exec_env, precision(), storage()));
+}
+
 INSTANTIATE_TEST_SUITE_P(
     QuantizeAndDequantizeFloatTestSuite, QuantizeAndDequantizeFloatTest,
     Combine(ValuesIn(GetCalculationsPrecisions()),
