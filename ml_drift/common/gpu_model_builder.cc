@@ -4774,9 +4774,9 @@ GpuModelBuilder::AppendOp(std::string_view op_name,
   return outputs;
 }
 
-void GpuModelBuilder::AddSrcTensor(GPUOperation* op, const std::string& name,
+void GpuModelBuilder::AddSrcTensor(GPUOperation* op, std::string_view name,
                                    const TensorHandle& handle) {
-  op->AddSrcTensor(name, handle.tensor_desc);
+  op->AddSrcTensor(std::string(name), handle.tensor_desc);
   for (int idx = gpu_model_.nodes.size() - 1; idx >= 0; --idx) {
     if (gpu_model_.nodes[idx].gpu_operation.get() == op) {
       gpu_model_.nodes[idx].inputs.push_back(handle.id);
@@ -4785,9 +4785,39 @@ void GpuModelBuilder::AddSrcTensor(GPUOperation* op, const std::string& name,
   }
 }
 
-void GpuModelBuilder::AddDstTensor(GPUOperation* op, const std::string& name,
+void GpuModelBuilder::AddSrcBuffer(GPUOperation* op, std::string_view name,
+                                   const TensorHandle& handle,
+                                   int element_size) {
+  BufferDescriptor desc;
+  desc.element_type = handle.tensor_desc.GetDataType();
+  desc.element_size = element_size;
+  op->AddSrcBuffer(std::string(name), desc);
+  for (int idx = gpu_model_.nodes.size() - 1; idx >= 0; --idx) {
+    if (gpu_model_.nodes[idx].gpu_operation.get() == op) {
+      gpu_model_.nodes[idx].inputs.push_back(handle.id);
+      break;
+    }
+  }
+}
+
+void GpuModelBuilder::AddDstTensor(GPUOperation* op, std::string_view name,
                                    const TensorHandle& handle) {
-  op->AddDstTensor(name, handle.tensor_desc);
+  op->AddDstTensor(std::string(name), handle.tensor_desc);
+  for (int idx = gpu_model_.nodes.size() - 1; idx >= 0; --idx) {
+    if (gpu_model_.nodes[idx].gpu_operation.get() == op) {
+      gpu_model_.nodes[idx].outputs.push_back(handle.id);
+      break;
+    }
+  }
+}
+
+void GpuModelBuilder::AddDstBuffer(GPUOperation* op, std::string_view name,
+                                   const TensorHandle& handle,
+                                   int element_size) {
+  BufferDescriptor desc;
+  desc.element_type = handle.tensor_desc.GetDataType();
+  desc.element_size = element_size;
+  op->AddDstBuffer(std::string(name), desc);
   for (int idx = gpu_model_.nodes.size() - 1; idx >= 0; --idx) {
     if (gpu_model_.nodes[idx].gpu_operation.get() == op) {
       gpu_model_.nodes[idx].outputs.push_back(handle.id);

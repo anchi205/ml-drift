@@ -564,13 +564,23 @@ class GpuModelBuilder {
 
   // Adds a source tensor to the GPUOperation and registers the tensor
   // dependency inside the GpuModel graph.
-  void AddSrcTensor(GPUOperation* op, const std::string& name,
+  void AddSrcTensor(GPUOperation* op, std::string_view name,
                     const TensorHandle& handle);
+
+  // Adds a source buffer to the GPUOperation and registers the tensor
+  // dependency inside the GpuModel graph.
+  void AddSrcBuffer(GPUOperation* op, std::string_view name,
+                    const TensorHandle& handle, int element_size = 1);
 
   // Adds a destination tensor to the GPUOperation and registers the tensor
   // output mapping inside the GpuModel graph.
-  void AddDstTensor(GPUOperation* op, const std::string& name,
+  void AddDstTensor(GPUOperation* op, std::string_view name,
                     const TensorHandle& handle);
+
+  // Adds a destination buffer to the GPUOperation and registers the tensor
+  // output mapping inside the GpuModel graph.
+  void AddDstBuffer(GPUOperation* op, std::string_view name,
+                    const TensorHandle& handle, int element_size = 1);
 
   TensorHandle BatchedMatMulSoftmaxBatchedMatMulSingleKernel(
       const TensorHandle& a_tensor, const TensorHandle& b_tensor,
