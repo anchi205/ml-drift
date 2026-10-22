@@ -209,7 +209,6 @@ absl::Status TensorToBHWCBufferConverter::Init(
 
   shape_ = BHWC(input_def.dimensions.b, input_def.dimensions.h,
                 input_def.dimensions.w, input_def.dimensions.c);
-  src_tensor_descriptor_.SetBHWCShape(shape_);
 
   queue_ = environment->queue();
   context_ = &environment->context();
@@ -289,7 +288,6 @@ absl::Status BHWCBufferToTensorConverter::Init(
 
   shape_ = BHWC(output_def.dimensions.b, output_def.dimensions.h,
                 output_def.dimensions.w, output_def.dimensions.c);
-  dst_tensor_descriptor_.SetBHWCShape(shape_);
 
   queue_ = environment->queue();
   context_ = &environment->context();

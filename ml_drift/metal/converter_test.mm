@@ -32,59 +32,51 @@ namespace ml_drift {
 namespace metal {
 
 void TensorToBHWCBufferConverterTest(const TensorDescriptor& src_desc, const DataType& dst_type) {
-  for (const BHWC& base_shape : {BHWC(1, 18, 37, 16), BHWC(1, 18, 37, 17)}) {
-    BHWC shape = base_shape;
-    if (src_desc.GetStorageType() == TensorStorageType::kSingleTexture2D) {
-      shape.c = 1;
+  Environment env;
+
+  TensorToBHWCBufferConverter converter;
+  XCTAssertTrue(converter.Init(&env, src_desc, dst_type).ok());
+
+  TensorDescriptor src_desc_copy = src_desc;
+  BHWC shape(1, 18, 37, 17);
+  if (src_desc.GetStorageType() == TensorStorageType::kSingleTexture2D) {
+    shape.c = 1;
+  }
+  TensorFloat32 src_tensor;
+  src_tensor.shape = shape;
+  src_tensor.data.resize(src_tensor.shape.DimensionsProduct());
+  for (int i = 0; i < src_tensor.data.size(); ++i) {
+    src_tensor.data[i] = ml_drift::half(std::sin(i * 0.12345));
+  }
+
+  MetalSpatialTensor src;
+  src_desc_copy.UploadData(src_tensor);
+  XCTAssertTrue(src.CreateFromDescriptor(src_desc_copy, env.device()).ok());
+
+  Buffer dst;
+  XCTAssertTrue(
+      CreateBuffer(shape.DimensionsProduct() * SizeOf(dst_type), nullptr, env.device(), &dst).ok());
+
+  id<MTLCommandQueue> command_queue = [env.device() newCommandQueue];
+  id<MTLCommandBuffer> command_buffer = [command_queue commandBuffer];
+  id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+  XCTAssertTrue(converter.Encode(encoder, &src, &dst).ok());
+  [encoder endEncoding];
+  [command_buffer commit];
+  [command_buffer waitUntilCompleted];
+  std::vector<float> dst_data;
+  if (dst_type == DataType::kFloat16) {
+    std::vector<ml_drift::half> gpu_data_half;
+    XCTAssertTrue(dst.ReadData(&gpu_data_half).ok());
+    for (int i = 0; i < gpu_data_half.size(); ++i) {
+      dst_data.push_back(static_cast<float>(gpu_data_half[i]));
     }
+  } else {
+    XCTAssertTrue(dst.ReadData(&dst_data).ok());
+  }
 
-    TensorDescriptor src_desc_copy = src_desc;
-    src_desc_copy.SetBHWCShape(shape);
-
-    Environment env;
-    TensorToBHWCBufferConverter converter;
-    XCTAssertTrue(converter.Init(&env, src_desc_copy, dst_type).ok());
-
-    TensorFloat32 src_tensor;
-    src_tensor.shape = shape;
-    src_tensor.data.resize(src_tensor.shape.DimensionsProduct());
-    for (int i = 0; i < src_tensor.data.size(); ++i) {
-      src_tensor.data[i] = ml_drift::half(std::sin(i * 0.12345));
-    }
-
-    MetalSpatialTensor src;
-    src_desc_copy.UploadData(src_tensor);
-    XCTAssertTrue(src.CreateFromDescriptor(src_desc_copy, env.device()).ok());
-
-    Buffer dst;
-    XCTAssertTrue(
-        CreateBuffer(shape.DimensionsProduct() * SizeOf(dst_type), nullptr, env.device(), &dst)
-            .ok());
-
-    id<MTLCommandQueue> command_queue = [env.device() newCommandQueue];
-    id<MTLCommandBuffer> command_buffer = [command_queue commandBuffer];
-    id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
-    XCTAssertTrue(converter.Encode(encoder, &src, &dst).ok());
-    [encoder endEncoding];
-    [command_buffer commit];
-    [command_buffer waitUntilCompleted];
-    std::vector<float> dst_data;
-    if (dst_type == DataType::kFloat16) {
-      std::vector<ml_drift::half> gpu_data_half;
-      XCTAssertTrue(dst.ReadData(&gpu_data_half).ok());
-      for (int i = 0; i < gpu_data_half.size(); ++i) {
-        dst_data.push_back(static_cast<float>(gpu_data_half[i]));
-      }
-    } else {
-      XCTAssertTrue(dst.ReadData(&dst_data).ok());
-    }
-
-    for (int i = 0; i < src_tensor.data.size(); ++i) {
-      XCTAssertEqual(src_tensor.data[i], dst_data[i]);
-    }
-    if (src_desc.GetStorageType() == TensorStorageType::kSingleTexture2D) {
-      break;
-    }
+  for (int i = 0; i < src_tensor.data.size(); ++i) {
+    XCTAssertEqual(src_tensor.data[i], dst_data[i]);
   }
 }
 

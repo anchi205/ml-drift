@@ -91,58 +91,56 @@ TEST_F(WebGpuOperationTest, FloatTensorToFloatBHWCBufferConverterTest) {
   for (auto src_type : {DataType::kFloat32, DataType::kFloat16}) {
     for (auto src_storage : exec_env_.GetSupportedStorages(src_type)) {
       for (auto dst_type : {DataType::kFloat32, DataType::kFloat16}) {
-        for (const BHWC& shape : {BHWC(3, 18, 23, 16), BHWC(3, 18, 23, 17)}) {
-          TensorDescriptor src_desc(src_type, src_storage, Layout::kBHWC);
-          src_desc.SetBHWCShape(shape);
+        TensorDescriptor src_desc(src_type, src_storage, Layout::kBHWC);
 
-          TensorToBHWCBufferConverter converter;
-          ABSL_ASSERT_OK(converter.Init(exec_env_.GetEnv(), src_desc, dst_type));
+        TensorToBHWCBufferConverter converter;
+        ABSL_ASSERT_OK(converter.Init(exec_env_.GetEnv(), src_desc, dst_type));
 
-          TensorFloat32 src_tensor;
-          src_tensor.shape = shape;
-          src_tensor.data.resize(src_tensor.shape.DimensionsProduct());
-          for (int i = 0; i < src_tensor.data.size(); ++i) {
-            src_tensor.data[i] = std::sin(i * 0.12345);
-          }
-
-          SpatialTensor src;
-          src_desc.UploadData(src_tensor);
-          ABSL_ASSERT_OK(
-              src.CreateFromDescriptor(exec_env_.GetEnv().device(), src_desc));
-
-          const size_t dst_buf_size =
-              shape.DimensionsProduct() * SizeOf(dst_type);
-          const size_t dst_buf_size_aligned =
-              AlignByN(dst_buf_size, SizeOf(dst_type) * 4);
-          Buffer dst = CreateBufferStorage(exec_env_.GetEnv().device(),
-                                           dst_buf_size_aligned);
-
-          wgpu::CommandEncoder encoder =
-              exec_env_.GetEnv().device().CreateCommandEncoder();
-          wgpu::ComputePassEncoder compute_encoder = encoder.BeginComputePass();
-          ABSL_ASSERT_OK(converter.Convert(exec_env_.GetEnv().device(),
-                                      compute_encoder, &src, &dst));
-          compute_encoder.End();
-          wgpu::CommandBuffer cb = encoder.Finish();
-          exec_env_.GetEnv().queue().Submit(1, &cb);
-
-          std::vector<float> dst_data(shape.DimensionsProduct());
-          if (dst_type == DataType::kFloat16) {
-            std::vector<half> dst_data_f16(shape.DimensionsProduct());
-            ABSL_ASSERT_OK(ReadDataFromBuffer(
-                exec_env_.GetEnv().device(), exec_env_.GetEnv().queue(),
-                dst.GetMemoryHandle(), dst_buf_size, dst_data_f16.data()));
-            for (int i = 0; i < dst_data_f16.size(); ++i) {
-              dst_data[i] = static_cast<float>(dst_data_f16[i]);
-            }
-          } else {
-            ABSL_ASSERT_OK(ReadDataFromBuffer(
-                exec_env_.GetEnv().device(), exec_env_.GetEnv().queue(),
-                dst.GetMemoryHandle(), dst_buf_size, dst_data.data()));
-          }
-
-          ASSERT_THAT(src_tensor.data, Pointwise(FloatNear(0.001f), dst_data));
+        const BHWC shape(3, 18, 23, 17);
+        TensorFloat32 src_tensor;
+        src_tensor.shape = shape;
+        src_tensor.data.resize(src_tensor.shape.DimensionsProduct());
+        for (int i = 0; i < src_tensor.data.size(); ++i) {
+          src_tensor.data[i] = std::sin(i * 0.12345);
         }
+
+        SpatialTensor src;
+        src_desc.UploadData(src_tensor);
+        ABSL_ASSERT_OK(
+            src.CreateFromDescriptor(exec_env_.GetEnv().device(), src_desc));
+
+        const size_t dst_buf_size =
+            shape.DimensionsProduct() * SizeOf(dst_type);
+        const size_t dst_buf_size_aligned =
+            AlignByN(dst_buf_size, SizeOf(dst_type) * 4);
+        Buffer dst = CreateBufferStorage(exec_env_.GetEnv().device(),
+                                         dst_buf_size_aligned);
+
+        wgpu::CommandEncoder encoder =
+            exec_env_.GetEnv().device().CreateCommandEncoder();
+        wgpu::ComputePassEncoder compute_encoder = encoder.BeginComputePass();
+        ABSL_ASSERT_OK(converter.Convert(exec_env_.GetEnv().device(),
+                                    compute_encoder, &src, &dst));
+        compute_encoder.End();
+        wgpu::CommandBuffer cb = encoder.Finish();
+        exec_env_.GetEnv().queue().Submit(1, &cb);
+
+        std::vector<float> dst_data(shape.DimensionsProduct());
+        if (dst_type == DataType::kFloat16) {
+          std::vector<half> dst_data_f16(shape.DimensionsProduct());
+          ABSL_ASSERT_OK(ReadDataFromBuffer(
+              exec_env_.GetEnv().device(), exec_env_.GetEnv().queue(),
+              dst.GetMemoryHandle(), dst_buf_size, dst_data_f16.data()));
+          for (int i = 0; i < dst_data_f16.size(); ++i) {
+            dst_data[i] = static_cast<float>(dst_data_f16[i]);
+          }
+        } else {
+          ABSL_ASSERT_OK(ReadDataFromBuffer(
+              exec_env_.GetEnv().device(), exec_env_.GetEnv().queue(),
+              dst.GetMemoryHandle(), dst_buf_size, dst_data.data()));
+        }
+
+        ASSERT_THAT(src_tensor.data, Pointwise(FloatNear(0.001f), dst_data));
       }
     }
   }

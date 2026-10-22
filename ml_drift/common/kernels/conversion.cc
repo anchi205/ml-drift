@@ -52,16 +52,7 @@ TensorToBhwcBuffer CreateTensorToBhwcBufferOp(
     const BufferDescriptor& dst_desc) {
   TensorToBhwcBuffer op;
   op.AddSrcTensor("tensor", src_desc);
-
-  const int channels = src_desc.GetBHWCShape().c;
-  const bool use_vec4 = channels > 0 && channels % 4 == 0;
-  if (use_vec4) {
-    BufferDescriptor vec_desc = dst_desc;
-    vec_desc.element_size = 4;
-    op.AddDstBuffer("buffer", vec_desc);
-  } else {
-    op.AddDstBuffer("buffer", dst_desc);
-  }
+  op.AddDstBuffer("buffer", dst_desc);
 
   op.code_ += R"(MAIN_FUNCTION($0) {
   int linear_id = ucl::GetGlobalId<0>();
@@ -71,20 +62,12 @@ TensorToBhwcBuffer CreateTensorToBhwcBufferOp(
   int d = ucl::GetGlobalId<2>();
   if (x >= args.tensor.Width() || y >= args.tensor.Height() || d >= args.tensor.Slices()) return;
   args.tensor::type in_value = args.tensor.Read(x, y, d, b);
-  int c = d * 4;
-  int index = ((b * args.tensor.Height() + y) * args.tensor.Width() + x) * args.tensor.Channels() + c;
-)";
-
-  if (use_vec4) {
-    op.code_ +=
-        R"(  args.buffer.Write(ucl::Convert<args.buffer::type>(in_value), index / 4);
-})";
-  } else {
-    op.code_ +=
-        R"(  args.buffer::scalar_type out_x = ucl::Convert<args.buffer::scalar_type>(in_value.x);
+  args.buffer::scalar_type out_x = ucl::Convert<args.buffer::scalar_type>(in_value.x);
   args.buffer::scalar_type out_y = ucl::Convert<args.buffer::scalar_type>(in_value.y);
   args.buffer::scalar_type out_z = ucl::Convert<args.buffer::scalar_type>(in_value.z);
   args.buffer::scalar_type out_w = ucl::Convert<args.buffer::scalar_type>(in_value.w);
+  int c = d * 4;
+  int index = ((b * args.tensor.Height() + y) * args.tensor.Width() + x) * args.tensor.Channels() + c;
 
   args.buffer.Write(out_x, index);
   if (c + 1 < args.tensor.Channels()) {
@@ -97,8 +80,6 @@ TensorToBhwcBuffer CreateTensorToBhwcBufferOp(
     args.buffer.Write(out_w, index + 3);
   }
 })";
-  }
-
   return op;
 }
 
