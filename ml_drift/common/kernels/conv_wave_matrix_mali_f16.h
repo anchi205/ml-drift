@@ -32,6 +32,12 @@ namespace ml_drift {
 
 class ConvWaveMatrixMaliF16 : public GPUOperation {
  public:
+  struct KernelParams {
+    int x_block_size = 1;
+    int s_block_size = 1;
+    bool slices_first = false;
+  };
+
   ConvWaveMatrixMaliF16() = default;
   ConvWaveMatrixMaliF16(
       const TensorDescriptor& src_desc, const TensorDescriptor& dst_desc,
@@ -50,9 +56,7 @@ class ConvWaveMatrixMaliF16 : public GPUOperation {
   ConvWaveMatrixMaliF16& operator=(const ConvWaveMatrixMaliF16&) = delete;
 
  private:
-  int x_block_size_ = 1;
-  int s_block_size_ = 1;
-  bool slices_first_ = false;
+  KernelParams kernel_params_;
 };
 
 bool SupportsConvWaveMatrixMaliF16(const GpuInfo& gpu_info);

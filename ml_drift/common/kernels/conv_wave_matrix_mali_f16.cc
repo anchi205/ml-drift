@@ -38,9 +38,9 @@
 
 namespace ml_drift {
 namespace {
-std::string GetCode(int x_block_size, int s_block_size, bool slices_first) {
+std::string GetCode(const ConvWaveMatrixMaliF16::KernelParams& kernel_params) {
   auto GetGlobalID = [&](int id) {
-    int3 wg_order = slices_first ? int3(1, 0, 2) : int3(0, 1, 2);
+    int3 wg_order = kernel_params.slices_first ? int3(1, 0, 2) : int3(0, 1, 2);
     int3 launch_remap;
     launch_remap[wg_order.x] = 0;
     launch_remap[wg_order.y] = 1;
@@ -70,9 +70,9 @@ MAIN_FUNCTION($0) {
   c += "  int slices_sub_id = subgroup_local_id % 2;\n";
   c += "  int x_sub_id = subgroup_local_id / 2;\n";
   c += "  int subgroup_base_x = subgroup_id * " +
-       std::to_string(x_block_size * 8) + ";\n";
+       std::to_string(kernel_params.x_block_size * 8) + ";\n";
   c += "  int subgroup_dst_s_base = " + GetGlobalID(1) + " * " +
-       std::to_string(s_block_size * 4) + ";\n";
+       std::to_string(kernel_params.s_block_size * 4) + ";\n";
   c += "  int y = " + GetGlobalID(2) + ";\n";
   c += R"(
 
@@ -84,8 +84,8 @@ MAIN_FUNCTION($0) {
   __global half8* w_base = (__global half8*)(args.weights.GetPtr() + subgroup_dst_s_base * 4 * args.src.Slices());
 
   )";
-  for (int s = 0; s < s_block_size; s++) {
-    for (int x = 0; x < x_block_size; x++) {
+  for (int s = 0; s < kernel_params.s_block_size; s++) {
+    for (int x = 0; x < kernel_params.x_block_size; x++) {
       std::string patch = R"(
   half4 r_w$0_s$1 = (half4)(0.0f);
   half4 r_w$0_s$2 = (half4)(0.0f);
@@ -97,19 +97,19 @@ MAIN_FUNCTION($0) {
 
   for (int src_slice = 0; src_slice < args.src.Slices(); src_slice += 2) {
 )";
-  for (int x = 0; x < x_block_size; x++) {
+  for (int x = 0; x < kernel_params.x_block_size; x++) {
     std::string patch = R"(
     half4 s$0 = args.src.Read(SRC_X + $1, y, src_slice + slices_sub_id);
 )";
     c += absl::Substitute(patch, x, x * 8);
   }
-  for (int s = 0; s < s_block_size; s++) {
+  for (int s = 0; s < kernel_params.s_block_size; s++) {
     c += R"(
     {
     half8 W = w_base[subgroup_local_id];
     w_base += 16;
 )";
-    for (int x = 0; x < x_block_size; x++) {
+    for (int x = 0; x < kernel_params.x_block_size; x++) {
       std::string patch = R"(
     r_w$0_s$1 = arm_simd16_mmul8x4x8(s$0.xy, W.s01, r_w$0_s$1);
     r_w$0_s$1 = arm_simd16_mmul8x4x8(s$0.zw, W.s23, r_w$0_s$1);
@@ -126,10 +126,11 @@ MAIN_FUNCTION($0) {
   int DST_S = subgroup_dst_s_base + subgroup_local_id % 4;
   int dst_s_final = 0;
 )";
-  c += "  int DST_X = subgroup_id * " + std::to_string(x_block_size * 8) +
+  c += "  int DST_X = subgroup_id * " +
+       std::to_string(kernel_params.x_block_size * 8) +
        " + x_sub_id / 2 * 2;\n";
-  for (int s = 0; s < s_block_size; s++) {
-    for (int x = 0; x < x_block_size; x++) {
+  for (int s = 0; s < kernel_params.s_block_size; s++) {
+    for (int x = 0; x < kernel_params.x_block_size; x++) {
       std::string patch = R"(
   dst_s_final = DST_S + $3;
   if (dst_s_final < args.dst.Slices()) {
@@ -197,19 +198,21 @@ static std::vector<float> reorder_weights(const std::vector<float>& w,
 ConvWaveMatrixMaliF16::ConvWaveMatrixMaliF16(
     const TensorDescriptor& src_desc, const TensorDescriptor& dst_desc,
     const ml_drift::Tensor<OHWI, DataType::kFloat32>& weights) {
-  x_block_size_ = 2;
-  s_block_size_ = 2;
-  slices_first_ = false;
+  kernel_params_.x_block_size = 2;
+  kernel_params_.s_block_size = 2;
+  kernel_params_.slices_first = false;
   work_group_size_ = int3(16, 1, 1);
-  code_ = GetCode(x_block_size_, s_block_size_, slices_first_);
-  work_group_launch_order_ = slices_first_ ? int3(1, 0, 2) : int3(0, 1, 2);
+  code_ = GetCode(kernel_params_);
+  work_group_launch_order_ =
+      kernel_params_.slices_first ? int3(1, 0, 2) : int3(0, 1, 2);
   compiler_options_.push_back(CompilerOptions::kClFastRelaxedMath);
 
   AddSrcTensor("src", src_desc);
   AddDstTensor("dst", dst_desc);
 
-  std::vector<float> reordered_weights = reorder_weights(
-      weights.data, weights.shape.i, weights.shape.o, s_block_size_);
+  std::vector<float> reordered_weights =
+      reorder_weights(weights.data, weights.shape.i, weights.shape.o,
+                      kernel_params_.s_block_size);
   std::vector<half> reordered_weights_half(reordered_weights.size());
   for (int i = 0; i < reordered_weights.size(); i++) {
     reordered_weights_half[i] = half(reordered_weights[i]);
@@ -240,9 +243,11 @@ std::vector<int3> ConvWaveMatrixMaliF16::GetPossibleKernelWorkGroups(
 }
 
 int3 ConvWaveMatrixMaliF16::GetGridSize() const {
-  int x_tiles = DivideRoundUp(dst_[0]->Width(), 8 * x_block_size_);
+  int x_tiles =
+      DivideRoundUp(dst_[0]->Width(), 8 * kernel_params_.x_block_size);
   const int grid_x = x_tiles * /*wave_size=*/16;
-  const int grid_y = DivideRoundUp(dst_[0]->Slices(), 4 * s_block_size_);
+  const int grid_y =
+      DivideRoundUp(dst_[0]->Slices(), 4 * kernel_params_.s_block_size);
   const int grid_z = dst_[0]->Height();
   return int3(grid_x, grid_y, grid_z);
 }
