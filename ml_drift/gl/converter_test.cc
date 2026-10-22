@@ -80,37 +80,39 @@ TEST_F(OpenGlOperationTest, TensorToBHWCBufferConverterTest) {
   for (auto src_type : {DataType::kFloat32, DataType::kFloat16}) {
     for (auto src_storage : exec_env_.GetSupportedStorages(src_type)) {
       for (auto dst_type : {DataType::kFloat32}) {
-        TensorDescriptor src_desc(src_type, src_storage, Layout::kHWC);
+        for (const BHWC& shape : {BHWC(1, 18, 37, 16), BHWC(1, 18, 37, 17)}) {
+          TensorDescriptor src_desc(src_type, src_storage, Layout::kHWC);
+          src_desc.SetBHWCShape(shape);
 
-        BufferDescriptor dst_desc;
-        dst_desc.element_type = dst_type;
-        dst_desc.element_size = 1;
-        dst_desc.memory_type = MemoryType::kGlobal;
+          BufferDescriptor dst_desc;
+          dst_desc.element_type = dst_type;
+          dst_desc.element_size = 1;
+          dst_desc.memory_type = MemoryType::kGlobal;
 
-        TensorToBHWCBufferConverter converter;
-        ABSL_ASSERT_OK(converter.Init(exec_env_.GetGpuInfo(), src_desc, dst_desc));
+          TensorToBHWCBufferConverter converter;
+          ABSL_ASSERT_OK(converter.Init(exec_env_.GetGpuInfo(), src_desc, dst_desc));
 
-        const BHWC shape(1, 18, 37, 17);
-        TensorFloat32 src_tensor;
-        src_tensor.shape = shape;
-        src_tensor.data.resize(src_tensor.shape.DimensionsProduct());
-        for (int i = 0; i < src_tensor.data.size(); ++i) {
-          src_tensor.data[i] = std::sin(i * 0.12345);
+          TensorFloat32 src_tensor;
+          src_tensor.shape = shape;
+          src_tensor.data.resize(src_tensor.shape.DimensionsProduct());
+          for (int i = 0; i < src_tensor.data.size(); ++i) {
+            src_tensor.data[i] = std::sin(i * 0.12345);
+          }
+
+          GlSpatialTensor src;
+          src_desc.UploadData(src_tensor);
+          ABSL_ASSERT_OK(src.CreateFromDescriptor(src_desc));
+
+          GlBuffer dst;
+          dst_desc.size = shape.DimensionsProduct() * SizeOf(dst_type);
+          dst.CreateFromBufferDescriptor(dst_desc);
+          ABSL_ASSERT_OK(converter.Convert(&src, &dst));
+          glFinish();
+          std::vector<float> dst_data;
+          ABSL_ASSERT_OK(dst.ReadData(&dst_data));
+
+          ASSERT_THAT(dst_data, Pointwise(FloatNear(1e-3f), src_tensor.data));
         }
-
-        GlSpatialTensor src;
-        src_desc.UploadData(src_tensor);
-        ABSL_ASSERT_OK(src.CreateFromDescriptor(src_desc));
-
-        GlBuffer dst;
-        dst_desc.size = shape.DimensionsProduct() * SizeOf(dst_type);
-        dst.CreateFromBufferDescriptor(dst_desc);
-        ABSL_ASSERT_OK(converter.Convert(&src, &dst));
-        glFinish();
-        std::vector<float> dst_data;
-        ABSL_ASSERT_OK(dst.ReadData(&dst_data));
-
-        ASSERT_THAT(dst_data, Pointwise(FloatNear(1e-3f), src_tensor.data));
       }
     }
   }
