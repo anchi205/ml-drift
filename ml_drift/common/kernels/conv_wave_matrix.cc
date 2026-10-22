@@ -271,6 +271,232 @@ std::string ReadWeights(const ConvWaveMatrix::ConvParams& conv_params,
   return c;
 }
 
+// Local weights cache declaration and thread/quantization index setup before
+// the channel loop.
+std::string GenerateWeightsConversionInit(
+    const ConvWaveMatrix::ConvParams& conv_params,
+    const ConvWaveMatrix::KernelParams& kernel_params) {
+  // WeightsLayout::kBIOI4O4
+  const bool quantized_weights =
+      SizeInBitsOf(conv_params.weights_desc.type) <= 8;
+  const int wm_n_slices = kernel_params.wave_matrix_n / 4;
+  const int wm_k_slices = kernel_params.wave_matrix_k / 4;
+  const int src_x4_slices = kernel_params.GetX4SlicesCount();
+  const int dst_x4_slices = kernel_params.dst_slices_per_thread;
+  const int wg_slices = kernel_params.GetX4SlicesCount();
+  const int i4o4_blocks = src_x4_slices * dst_x4_slices;
+  const int weights_per_slice = i4o4_blocks * 16;
+  std::string c;
+  c += "  __local SType weights_cache_wg[" +
+       std::to_string(wg_slices * weights_per_slice) + "];\n";
+  c += "  __local SType* weights_cache_sg = weights_cache_wg + slice_id * " +
+       std::to_string(weights_per_slice) + ";\n";
+  c += "  __local Type* weights_cache_sg_x4 = (__local "
+       "Type*)weights_cache_sg;\n";
+  const int o_groups = dst_x4_slices;
+  c += "  int w_sg_offset, stride;\n";
+  c += "  int o1, o2, i1, i2;\n";
+  c += "  Type w_scale, w_bias;\n";
+  c += "  int sub_i, sub_o, w_o_slice;\n";
+  if (quantized_weights && conv_params.scale_zp_shape.i != 1) {
+    // grouped quantization
+    c += "  int last_src_group_id = -1;\n";
+  }
+  if (quantized_weights && conv_params.scale_zp_shape.i == 1 &&
+      conv_params.scale_zp_shape.o == 1) {
+    // scalar quantization
+    c += fc::ReadScaleZeroPointScalar(
+        conv_params.has_zero_point,
+        fc::GetDataTypeForWeights(conv_params.weights_desc.type));
+  }
+  if (i4o4_blocks < kernel_params.wave_size) {
+    c += "  if (spatial_id < " + std::to_string(i4o4_blocks) + ") {\n";
+  }
+  // i4o4 blocks stored in layout BIO
+  c += "  sub_i = spatial_id / " + std::to_string(o_groups) + ";\n";
+  c += "  sub_o = spatial_id % " + std::to_string(o_groups) + ";\n";
+  c += "  w_o_slice = min(DST_S + sub_o, args.dst_tensor.Slices()-1);\n";
+  const std::string batch_part = conv_params.different_weights_for_height
+                                     ? "w_batch_id * args.src_tensor.Slices()"
+                                     : "0";
+  c += "  w_sg_offset = (" + batch_part +
+       " + sub_i) * args.dst_tensor.Slices() + w_o_slice;\n";
+  c += "  stride = args.dst_tensor.Slices() * " +
+       std::to_string(src_x4_slices) + ";\n";
+  if (quantized_weights && conv_params.scale_zp_shape.i == 1 &&
+      conv_params.scale_zp_shape.o != 1) {
+    // linear quantization
+    c += fc::ReadScaleZeroPointLinear(
+        "w_o_slice", conv_params.scale_zp_shape, conv_params.has_zero_point,
+        fc::GetDataTypeForWeights(conv_params.weights_desc.type));
+  }
+  c += "  o1 = sub_o % " + std::to_string(wm_n_slices) + ";\n";
+  c += "  o2 = sub_o / " + std::to_string(wm_n_slices) + ";\n";
+  c += "  i1 = sub_i % " + std::to_string(wm_k_slices) + ";\n";
+  c += "  i2 = sub_i / " + std::to_string(wm_k_slices) + ";\n";
+  if (i4o4_blocks < kernel_params.wave_size) {
+    c += "  }\n";
+  }
+  return c;
+}
+
+// Cooperative weights reading/dequantization into weights_cache_wg.
+std::string GenerateLoadWeightsToLocalCache(
+    const ConvWaveMatrix::ConvParams& conv_params,
+    const ConvWaveMatrix::KernelParams& kernel_params) {
+  const int wm_n_slices = kernel_params.wave_matrix_n / 4;
+  const int wm_k = kernel_params.wave_matrix_k;
+  const int src_x4_slices = kernel_params.GetX4SlicesCount();
+  const int dst_x4_slices = kernel_params.dst_slices_per_thread;
+  const int i4o4_blocks = src_x4_slices * dst_x4_slices;
+  std::string c;
+  if (i4o4_blocks < kernel_params.wave_size) {
+    c += "  if (spatial_id < " + std::to_string(i4o4_blocks) + ") {\n";
+  }
+  c += ReadWeights(conv_params, src_x4_slices);
+  for (int i = 0; i < 4; ++i) {
+    std::string addr =
+        "((i2 * " + std::to_string(dst_x4_slices / wm_n_slices) + " + o2) * " +
+        std::to_string(wm_k) + " + i1 * 4 + " + std::to_string(i) + ") * " +
+        std::to_string(wm_n_slices) + " + o1";
+    c += "    weights_cache_sg_x4[" + addr + "] = w" + std::to_string(i) +
+         ";\n";
+  }
+  if (i4o4_blocks < kernel_params.wave_size) {
+    c += "  }\n";
+  }
+  return c;
+}
+
+// Shared ucl::WaveMatrixLoad loop for both pre-converted
+// (args.weights.GetPtr) and on-the-fly (weights_cache_wg) weights.
+std::string GenerateWaveMatrixLoadWeights(
+    const GpuInfo& gpu_info, const ConvWaveMatrix::ConvParams& conv_params,
+    const ConvWaveMatrix::KernelParams& kernel_params,
+    const std::string& weights_ptr, const std::string& base_offset) {
+  const int wm_n = kernel_params.wave_matrix_n;
+  const int wm_k = kernel_params.wave_matrix_k;
+  const int wm_n_slices = wm_n / 4;
+  const int wm_k_slices = wm_k / 4;
+  const int src_x4_slices = kernel_params.GetX4SlicesCount();
+  const int src_xK_slices =
+      src_x4_slices * (conv_params.Is8Bit() ? 4 : 1) / wm_k_slices;
+  const int dst_xN_slices = kernel_params.dst_slices_per_thread / wm_n_slices;
+  std::string c;
+  for (int src_s = 0; src_s < src_xK_slices; ++src_s) {
+    const std::string src_range = "i" + std::to_string(src_s * wm_k) + "_" +
+                                  std::to_string(src_s * wm_k + wm_k);
+    for (int dst_s = 0; dst_s < dst_xN_slices; ++dst_s) {
+      const std::string dst_range = "o" + std::to_string(dst_s * wm_n) + "_" +
+                                    std::to_string(dst_s * wm_n + wm_n);
+      const std::string w_name = "w_" + dst_range + "_" + src_range;
+      std::string offset =
+          std::to_string(src_s * dst_xN_slices + dst_s) + " * WM_K * WM_N";
+      if (!base_offset.empty()) {
+        offset = base_offset + " + " + offset;
+      }
+      std::string stride =
+          kernel_params.load_right_transposed ? "WM_K" : "WM_N";
+      if (conv_params.Is8Bit()) {
+        UpdateOffsetAndStrideForInt8(gpu_info, offset, stride);
+      }
+      const std::string row_major =
+          kernel_params.load_right_transposed ? "false" : "true";
+      c += "    ucl::WaveMatrixLoad(" + w_name + ", " + weights_ptr + ", " +
+           offset + ", " + stride + ", " + row_major + ");\n";
+    }
+  }
+  return c;
+}
+
+// Accumulator-to-register transfer, bias addition, and dst_tensor.Write.
+std::string GenerateWriteDst(const OperationDef& definition,
+                             const GpuInfo& gpu_info,
+                             const ConvWaveMatrix::ConvParams& conv_params,
+                             const ConvWaveMatrix::KernelParams& kernel_params,
+                             const std::string& dst_cache_name,
+                             const std::string& dst_cache_x4_name) {
+  const int wm_m = kernel_params.wave_matrix_m;
+  const int wm_n = kernel_params.wave_matrix_n;
+  const int wm_n_slices = wm_n / 4;
+  const int dst_x4_slices = kernel_params.dst_slices_per_thread;
+  const bool supports_x4_reinterpret = gpu_info.IsApiMetal();
+  const DataType dst_type = definition.dst_tensors[0].GetDataType();
+  std::string c;
+  for (int slice = 0; slice < dst_x4_slices; slice += 1) {
+    c += "  " + ToUclDataType(dst_type, 4) + " r" + std::to_string(slice) +
+         " = ucl::Init<" + ToUclDataType(dst_type, 4) + ">(" +
+         GetZeroValue(dst_type) + ");\n";
+  }
+  c += "  // transferring from wave matrix to private registers.\n";
+  for (int slice_offset = 0; slice_offset < dst_x4_slices;
+       slice_offset += wm_n_slices) {
+    const std::string ch = "ch" + std::to_string(slice_offset * 4) + "_" +
+                           std::to_string(slice_offset * 4 + wm_n);
+    for (int sp = 0; sp < kernel_params.wave_size; sp += wm_m) {
+      const std::string sp_start = std::to_string(sp);
+      const std::string sp_end = std::to_string(sp + wm_m);
+      const std::string dst_name_sp = "dst_sp" + sp_start + "_" + sp_end;
+      const int spatial_id = sp / wm_m;
+      std::string dst_name = dst_name_sp + "_" + ch;
+      c += "  ucl::WaveMatrixStore(" + dst_name + ", " + dst_cache_name + ", " +
+           std::to_string(spatial_id) +
+           " * WM_M * WM_N + slice_id * SPATIAL_THREADS * WM_N, WM_N);\n";
+    }
+    c += "  ucl::SyncThreads<WorkGroup, Local>();\n";
+    for (int slice = 0; slice < wm_n_slices; slice += 1) {
+      c += "  {\n";
+      c += "    int base_id = (slice_id * "
+           "SPATIAL_THREADS + spatial_id) * (WM_N / 4) + " +
+           std::to_string(slice) + ";\n";
+      if (supports_x4_reinterpret) {
+        c += "    r" + std::to_string(slice_offset + slice) +
+             " = ucl::Convert<" + ToUclDataType(dst_type, 4) + ">(" +
+             dst_cache_x4_name + "[base_id]);\n";
+      } else {
+        c += "    r" + std::to_string(slice_offset + slice) +
+             ".x = ucl::Convert<" + ToUclDataType(dst_type, 1) + ">(" +
+             dst_cache_name + "[base_id * 4 + 0]);\n";
+        c += "    r" + std::to_string(slice_offset + slice) +
+             ".y = ucl::Convert<" + ToUclDataType(dst_type, 1) + ">(" +
+             dst_cache_name + "[base_id * 4 + 1]);\n";
+        c += "    r" + std::to_string(slice_offset + slice) +
+             ".z = ucl::Convert<" + ToUclDataType(dst_type, 1) + ">(" +
+             dst_cache_name + "[base_id * 4 + 2]);\n";
+        c += "    r" + std::to_string(slice_offset + slice) +
+             ".w = ucl::Convert<" + ToUclDataType(dst_type, 1) + ">(" +
+             dst_cache_name + "[base_id * 4 + 3]);\n";
+      }
+      c += "  }\n";
+    }
+    c += "  ucl::SyncThreads<WorkGroup, Local>();\n";
+  }
+  c += "  if (DST_X >= args.dst_tensor.Width() || DST_Y >= "
+       "args.dst_tensor.Height()) {\n";
+  c += "    return;\n";
+  c += "  }\n";
+  if (conv_params.runtime_check.packed_groups.has_value()) {
+    c += "  if (DST_X >= w_group_offset + w_group_size) return;\n";
+  }
+  for (int slice = 0; slice < dst_x4_slices; slice += 2) {
+    const std::string dst_s0 = "DST_S + " + std::to_string(slice);
+    const std::string dst_s1 = "DST_S + " + std::to_string(slice + 1);
+    const std::string r0_name = "r" + std::to_string(slice);
+    const std::string r1_name = "r" + std::to_string(slice + 1);
+    c += "  if (" + dst_s0 + " < args.dst_tensor.Slices()) {\n";
+    if (conv_params.has_bias) {
+      c += "    " + r0_name + " += args.biases.Read(" + dst_s0 + ");\n";
+      c += "    " + r1_name + " += args.biases.Read(" + dst_s1 + ");\n";
+    }
+    c += "    args.dst_tensor.Write(" + r0_name + ", DST_X, DST_Y, " + dst_s0 +
+         ");\n";
+    c += "    args.dst_tensor.Write(" + r1_name + ", DST_X, DST_Y, " + dst_s1 +
+         ");\n";
+    c += "  }\n";
+  }
+  return c;
+}
+
 std::string GenerateConvolution(
     const OperationDef& definition, const GpuInfo& gpu_info,
     const ConvWaveMatrix::ConvParams& conv_params,
@@ -315,8 +541,6 @@ std::string GenerateConvolution(
   }
   const bool weights_conversion =
       conv_params.weights_desc.layout == WeightsLayout::kOSpatialIOGroupI4O4;
-  const bool quantized_weights =
-      weights_conversion && SizeInBitsOf(conv_params.weights_desc.type) <= 8;
   // kOSpatialIOGroupIwmkOwmn
   const int o_group_size_xN = kernel_params.dst_slices_per_thread / wm_n_slices;
   const std::string i_slices_xK = "((args.src_tensor.Slices() * (" +
@@ -517,60 +741,7 @@ std::string GenerateConvolution(
     src_slices_count = "src_slices_dynamic";
   }
   if (weights_conversion) {
-    // WeightsLayout::kBIOI4O4
-    const int wg_slices = kernel_params.GetX4SlicesCount();
-    const int i4o4_blocks = src_x4_slices * dst_x4_slices;
-    const int weights_per_slice = i4o4_blocks * 16;
-    c += "  __local SType weights_cache_wg[" +
-         std::to_string(wg_slices * weights_per_slice) + "];\n";
-    c += "  __local SType* weights_cache_sg = weights_cache_wg + slice_id * " +
-         std::to_string(weights_per_slice) + ";\n";
-    c += "  __local Type* weights_cache_sg_x4 = (__local "
-         "Type*)weights_cache_sg;\n";
-    const int o_groups = dst_x4_slices;
-    c += "  int w_sg_offset, stride;\n";
-    c += "  int o1, o2, i1, i2;\n";
-    c += "  Type w_scale, w_bias;\n";
-    c += "  int sub_i, sub_o, w_o_slice;\n";
-    if (quantized_weights && conv_params.scale_zp_shape.i != 1) {
-      // grouped quantization
-      c += "  int last_src_group_id = -1;\n";
-    }
-    if (quantized_weights && conv_params.scale_zp_shape.i == 1 &&
-        conv_params.scale_zp_shape.o == 1) {
-      // scalar quantization
-      c += fc::ReadScaleZeroPointScalar(
-          conv_params.has_zero_point,
-          fc::GetDataTypeForWeights(conv_params.weights_desc.type));
-    }
-    if (i4o4_blocks < kernel_params.wave_size) {
-      c += "  if (spatial_id < " + std::to_string(i4o4_blocks) + ") {\n";
-    }
-    // i4o4 blocks stored in layout BIO
-    c += "  sub_i = spatial_id / " + std::to_string(o_groups) + ";\n";
-    c += "  sub_o = spatial_id % " + std::to_string(o_groups) + ";\n";
-    c += "  w_o_slice = min(DST_S + sub_o, args.dst_tensor.Slices()-1);\n";
-    const std::string batch_part = conv_params.different_weights_for_height
-                                       ? "w_batch_id * args.src_tensor.Slices()"
-                                       : "0";
-    c += "  w_sg_offset = (" + batch_part +
-         " + sub_i) * args.dst_tensor.Slices() + w_o_slice;\n";
-    c += "  stride = args.dst_tensor.Slices() * " +
-         std::to_string(src_x4_slices) + ";\n";
-    if (quantized_weights && conv_params.scale_zp_shape.i == 1 &&
-        conv_params.scale_zp_shape.o != 1) {
-      // linear quantization
-      c += fc::ReadScaleZeroPointLinear(
-          "w_o_slice", conv_params.scale_zp_shape, conv_params.has_zero_point,
-          fc::GetDataTypeForWeights(conv_params.weights_desc.type));
-    }
-    c += "  o1 = sub_o % " + std::to_string(wm_n_slices) + ";\n";
-    c += "  o2 = sub_o / " + std::to_string(wm_n_slices) + ";\n";
-    c += "  i1 = sub_i % " + std::to_string(wm_k_slices) + ";\n";
-    c += "  i2 = sub_i / " + std::to_string(wm_k_slices) + ";\n";
-    if (i4o4_blocks < kernel_params.wave_size) {
-      c += "  }\n";
-    }
+    c += GenerateWeightsConversionInit(conv_params, kernel_params);
   }
   c += "  for (int s = 0; s < " + src_slices_count +
        "; s += " + std::to_string(src_x4_slices) + ") {\n";
@@ -589,44 +760,11 @@ std::string GenerateConvolution(
   }
   c += "    ucl::SyncThreads<WorkGroup, Local>();\n";
   if (weights_conversion) {
-    const int i4o4_blocks = src_x4_slices * dst_x4_slices;
-    if (i4o4_blocks < kernel_params.wave_size) {
-      c += "  if (spatial_id < " + std::to_string(i4o4_blocks) + ") {\n";
-    }
-    c += ReadWeights(conv_params, src_x4_slices);
-    for (int i = 0; i < 4; ++i) {
-      std::string addr =
-          "((i2 * " + std::to_string(dst_x4_slices / wm_n_slices) +
-          " + o2) * " + std::to_string(wm_k) + " + i1 * 4 + " +
-          std::to_string(i) + ") * " + std::to_string(wm_n_slices) + " + o1";
-      c += "    weights_cache_sg_x4[" + addr + "] = w" + std::to_string(i) +
-           ";\n";
-    }
-    if (i4o4_blocks < kernel_params.wave_size) {
-      c += "  }\n";
-    }
+    c += GenerateLoadWeightsToLocalCache(conv_params, kernel_params);
   } else {
-    for (int src_s = 0; src_s < src_xK_slices; ++src_s) {
-      const std::string src_range = "i" + std::to_string(src_s * wm_k) + "_" +
-                                    std::to_string(src_s * wm_k + wm_k);
-      for (int dst_s = 0; dst_s < dst_xN_slices; ++dst_s) {
-        const std::string dst_range = "o" + std::to_string(dst_s * wm_n) + "_" +
-                                      std::to_string(dst_s * wm_n + wm_n);
-        const std::string w_name = "w_" + dst_range + "_" + src_range;
-        std::string offset = "weights_wgs_offset + " +
-                             std::to_string(src_s * dst_xN_slices + dst_s) +
-                             " * WM_K * WM_N";
-        std::string stride =
-            kernel_params.load_right_transposed ? "WM_K" : "WM_N";
-        if (conv_params.Is8Bit()) {
-          UpdateOffsetAndStrideForInt8(gpu_info, offset, stride);
-        }
-        const std::string row_major =
-            kernel_params.load_right_transposed ? "false" : "true";
-        c += "    ucl::WaveMatrixLoad(" + w_name + ", args.weights.GetPtr(), " +
-             offset + ", " + stride + ", " + row_major + ");\n";
-      }
-    }
+    c += GenerateWaveMatrixLoadWeights(gpu_info, conv_params, kernel_params,
+                                       "args.weights.GetPtr()",
+                                       "weights_wgs_offset");
   }
   std::string src_read_func =
       src_def.IsLinear() ? "args.src_tensor.Read(src_address)"
@@ -659,26 +797,8 @@ std::string GenerateConvolution(
   }
   c += "    ucl::SyncThreads<WorkGroup, Local>();\n";
   if (weights_conversion) {
-    for (int src_s = 0; src_s < src_xK_slices; ++src_s) {
-      const std::string src_range = "i" + std::to_string(src_s * wm_k) + "_" +
-                                    std::to_string(src_s * wm_k + wm_k);
-      for (int dst_s = 0; dst_s < dst_xN_slices; ++dst_s) {
-        const std::string dst_range = "o" + std::to_string(dst_s * wm_n) + "_" +
-                                      std::to_string(dst_s * wm_n + wm_n);
-        const std::string w_name = "w_" + dst_range + "_" + src_range;
-        std::string offset =
-            std::to_string(src_s * dst_xN_slices + dst_s) + " * WM_K * WM_N";
-        std::string stride =
-            kernel_params.load_right_transposed ? "WM_K" : "WM_N";
-        if (conv_params.Is8Bit()) {
-          UpdateOffsetAndStrideForInt8(gpu_info, offset, stride);
-        }
-        const std::string row_major =
-            kernel_params.load_right_transposed ? "false" : "true";
-        c += "    ucl::WaveMatrixLoad(" + w_name + ", weights_cache_sg, " +
-             offset + ", " + stride + ", " + row_major + ");\n";
-      }
-    }
+    c += GenerateWaveMatrixLoadWeights(gpu_info, conv_params, kernel_params,
+                                       "weights_cache_sg", "");
   }
   const DataType left_matrix_type =
       conv_params.Is8Bit() ? DataType::kInt8 : src_def.GetDataType();
@@ -718,78 +838,8 @@ std::string GenerateConvolution(
     c += "  }\n";
   }
   c += "  ucl::SyncThreads<WorkGroup, Local>();\n";
-  const DataType dst_type = definition.dst_tensors[0].GetDataType();
-  for (int slice = 0; slice < dst_x4_slices; slice += 1) {
-    c += "  " + ToUclDataType(dst_type, 4) + " r" + std::to_string(slice) +
-         " = ucl::Init<" + ToUclDataType(dst_type, 4) + ">(" +
-         GetZeroValue(dst_type) + ");\n";
-  }
-  c += "  // transferring from wave matrix to private registers.\n";
-  for (int slice_offset = 0; slice_offset < dst_x4_slices;
-       slice_offset += wm_n_slices) {
-    const std::string ch = "ch" + std::to_string(slice_offset * 4) + "_" +
-                           std::to_string(slice_offset * 4 + wm_n);
-    for (int sp = 0; sp < kernel_params.wave_size; sp += wm_m) {
-      const std::string sp_start = std::to_string(sp);
-      const std::string sp_end = std::to_string(sp + wm_m);
-      const std::string dst_name_sp = "dst_sp" + sp_start + "_" + sp_end;
-      const int spatial_id = sp / wm_m;
-      std::string dst_name = dst_name_sp + "_" + ch;
-      c += "  ucl::WaveMatrixStore(" + dst_name + ", " +
-           std::string(dst_cache_name) + ", " + std::to_string(spatial_id) +
-           " * WM_M * WM_N + slice_id * SPATIAL_THREADS * WM_N, WM_N);\n";
-    }
-    c += "  ucl::SyncThreads<WorkGroup, Local>();\n";
-    for (int slice = 0; slice < wm_n_slices; slice += 1) {
-      c += "  {\n";
-      c += "    int base_id = (slice_id * "
-           "SPATIAL_THREADS + spatial_id) * (WM_N / 4) + " +
-           std::to_string(slice) + ";\n";
-      if (supports_x4_reinterpret) {
-        c += "    r" + std::to_string(slice_offset + slice) +
-             " = ucl::Convert<" + ToUclDataType(dst_type, 4) + ">(" +
-             std::string(dst_cache_x4_name) + "[base_id]);\n";
-      } else {
-        c += "    r" + std::to_string(slice_offset + slice) +
-             ".x = ucl::Convert<" + ToUclDataType(dst_type, 1) + ">(" +
-             std::string(dst_cache_name) + "[base_id * 4 + 0]);\n";
-        c += "    r" + std::to_string(slice_offset + slice) +
-             ".y = ucl::Convert<" + ToUclDataType(dst_type, 1) + ">(" +
-             std::string(dst_cache_name) + "[base_id * 4 + 1]);\n";
-        c += "    r" + std::to_string(slice_offset + slice) +
-             ".z = ucl::Convert<" + ToUclDataType(dst_type, 1) + ">(" +
-             std::string(dst_cache_name) + "[base_id * 4 + 2]);\n";
-        c += "    r" + std::to_string(slice_offset + slice) +
-             ".w = ucl::Convert<" + ToUclDataType(dst_type, 1) + ">(" +
-             std::string(dst_cache_name) + "[base_id * 4 + 3]);\n";
-      }
-      c += "  }\n";
-    }
-    c += "  ucl::SyncThreads<WorkGroup, Local>();\n";
-  }
-  c += "  if (DST_X >= args.dst_tensor.Width() || DST_Y >= "
-       "args.dst_tensor.Height()) {\n";
-  c += "    return;\n";
-  c += "  }\n";
-  if (conv_params.runtime_check.packed_groups.has_value()) {
-    c += "  if (DST_X >= w_group_offset + w_group_size) return;\n";
-  }
-  for (int slice = 0; slice < dst_x4_slices; slice += 2) {
-    const std::string dst_s0 = "DST_S + " + std::to_string(slice);
-    const std::string dst_s1 = "DST_S + " + std::to_string(slice + 1);
-    const std::string r0_name = "r" + std::to_string(slice);
-    const std::string r1_name = "r" + std::to_string(slice + 1);
-    c += "  if (" + dst_s0 + " < args.dst_tensor.Slices()) {\n";
-    if (conv_params.has_bias) {
-      c += "    " + r0_name + " += args.biases.Read(" + dst_s0 + ");\n";
-      c += "    " + r1_name + " += args.biases.Read(" + dst_s1 + ");\n";
-    }
-    c += "    args.dst_tensor.Write(" + r0_name + ", DST_X, DST_Y, " + dst_s0 +
-         ");\n";
-    c += "    args.dst_tensor.Write(" + r1_name + ", DST_X, DST_Y, " + dst_s1 +
-         ");\n";
-    c += "  }\n";
-  }
+  c += GenerateWriteDst(definition, gpu_info, conv_params, kernel_params,
+                        dst_cache_name, dst_cache_x4_name);
   c += "}\n";
   const DataType type = src_def.GetDataType();
   absl::flat_hash_map<std::string, std::string> replacements = {
