@@ -153,39 +153,49 @@ MAIN_FUNCTION($0) {
   return c;
 }
 
-static std::vector<float> reorder_weights(const std::vector<float>& w,
-                                          int src_channels, int dst_channels,
-                                          int s_block_size) {
-  std::vector<float> out(w.size(), 0.0f);
-  const int src_groups = src_channels / 8;
-  const int dst_groups = dst_channels / 16 / s_block_size;
+static std::vector<half> ReorderWeights(
+    const ml_drift::Tensor<OHWI, DataType::kFloat32>& weights,
+    int s_block_size) {
+  const int src_channels = weights.shape.i;
+  const int dst_channels = weights.shape.o;
+  const int H = weights.shape.h;
+  const int W = weights.shape.w;
+  const int src_groups = DivideRoundUp(src_channels, 8);
+  const int dst_groups = DivideRoundUp(dst_channels, 16 * s_block_size);
+  std::vector<half> out(dst_groups * H * W * src_groups * s_block_size * 128,
+                        half(0.0f));
+  int block_offset = 0;
+  // OSpatialII2I2gr0O8I2gr1O2
   for (int dst_group = 0; dst_group < dst_groups; dst_group++) {
-    for (int src_group = 0; src_group < src_groups; src_group++) {
-      for (int dst_block = 0; dst_block < s_block_size; dst_block++) {
-        std::vector<float> w128(128, 0.0f);
-        int counter = 0;
-        int i_offset = src_group * 8;
-        int o_offset = (dst_group * s_block_size + dst_block) * 16;
-        // OSpatialII2I2gr0O8I2gr1O2
-        for (int i2 = 0; i2 < 2; i2++) {
-          for (int i1 = 0; i1 < 2; i1++) {
-            for (int o1 = 0; o1 < 8; o1++) {
-              for (int i0 = 0; i0 < 2; i0++) {
-                for (int o0 = 0; o0 < 2; o0++) {
-                  int i_block = (i2 * 2 + i0) * 2 + i1;
-                  int o_block = o1 * 2 + o0;
-                  int i_ch = i_offset + i_block;
-                  int o_ch = o_offset + o_block;
-                  w128[counter++] = w[o_ch * src_channels + i_ch];
+    for (int ky = 0; ky < H; ky++) {
+      for (int kx = 0; kx < W; kx++) {
+        for (int src_group = 0; src_group < src_groups; src_group++) {
+          for (int dst_block = 0; dst_block < s_block_size; dst_block++) {
+            int counter = 0;
+            int i_offset = src_group * 8;
+            int o_offset = (dst_group * s_block_size + dst_block) * 16;
+            for (int i2 = 0; i2 < 2; i2++) {
+              for (int i1 = 0; i1 < 2; i1++) {
+                for (int o1 = 0; o1 < 8; o1++) {
+                  for (int i0 = 0; i0 < 2; i0++) {
+                    for (int o0 = 0; o0 < 2; o0++) {
+                      int i_block = (i2 * 2 + i0) * 2 + i1;
+                      int o_block = o1 * 2 + o0;
+                      int i_ch = i_offset + i_block;
+                      int o_ch = o_offset + o_block;
+                      float val = 0.0f;
+                      if (o_ch < dst_channels && i_ch < src_channels) {
+                        val = weights.data[weights.shape.LinearIndex(
+                            {o_ch, ky, kx, i_ch})];
+                      }
+                      out[block_offset * 128 + counter++] = half(val);
+                    }
+                  }
                 }
               }
             }
+            block_offset++;
           }
-        }
-        const int block_offset =
-            (dst_group * src_groups + src_group) * s_block_size + dst_block;
-        for (int i = 0; i < 128; i++) {
-          out[block_offset * 128 + i] = w128[i];
         }
       }
     }
@@ -195,9 +205,8 @@ static std::vector<float> reorder_weights(const std::vector<float>& w,
 
 }  // namespace
 
-ConvWaveMatrixMaliF16::ConvWaveMatrixMaliF16(
-    const TensorDescriptor& src_desc, const TensorDescriptor& dst_desc,
-    const ml_drift::Tensor<OHWI, DataType::kFloat32>& weights) {
+ConvWaveMatrixMaliF16::ConvWaveMatrixMaliF16(const TensorDescriptor& src_desc,
+                                             const TensorDescriptor& dst_desc) {
   kernel_params_.x_block_size = 2;
   kernel_params_.s_block_size = 2;
   kernel_params_.slices_first = false;
@@ -209,24 +218,6 @@ ConvWaveMatrixMaliF16::ConvWaveMatrixMaliF16(
 
   AddSrcTensor("src", src_desc);
   AddDstTensor("dst", dst_desc);
-
-  std::vector<float> reordered_weights =
-      reorder_weights(weights.data, weights.shape.i, weights.shape.o,
-                      kernel_params_.s_block_size);
-  std::vector<half> reordered_weights_half(reordered_weights.size());
-  for (int i = 0; i < reordered_weights.size(); i++) {
-    reordered_weights_half[i] = half(reordered_weights[i]);
-  }
-  BufferDescriptor buffer_desc;
-  buffer_desc.element_type = DataType::kFloat16;
-  buffer_desc.element_size = 4;
-  buffer_desc.memory_type = MemoryType::kGlobal;
-  buffer_desc.size = reordered_weights.size() * SizeOf(DataType::kFloat16);
-  buffer_desc.data.resize(buffer_desc.size);
-  std::memcpy(buffer_desc.data.data(), reordered_weights_half.data(),
-              buffer_desc.size);
-  args_.AddObject("weights",
-                  std::make_unique<BufferDescriptor>(std::move(buffer_desc)));
 }
 
 std::vector<int3> ConvWaveMatrixMaliF16::GetPossibleKernelWorkGroups(
@@ -252,6 +243,22 @@ int3 ConvWaveMatrixMaliF16::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
+void ConvWaveMatrixMaliF16::AddWeights(
+    const Tensor<OHWI, DataType::kFloat32>& weights) {
+  std::vector<half> reordered_weights =
+      ReorderWeights(weights, kernel_params_.s_block_size);
+  BufferDescriptor buffer_desc;
+  buffer_desc.element_type = DataType::kFloat16;
+  buffer_desc.element_size = 4;
+  buffer_desc.memory_type = MemoryType::kGlobal;
+  buffer_desc.size = reordered_weights.size() * SizeOf(DataType::kFloat16);
+  buffer_desc.data.resize(buffer_desc.size);
+  std::memcpy(buffer_desc.data.data(), reordered_weights.data(),
+              buffer_desc.size);
+  args_.AddObject("weights",
+                  std::make_unique<BufferDescriptor>(std::move(buffer_desc)));
+}
+
 bool SupportsConvWaveMatrixMaliF16(const GpuInfo& gpu_info) {
   if (!gpu_info.SupportsExtension("cl_arm_matrix_multiply")) {
     return false;
@@ -265,8 +272,9 @@ bool SupportsConvWaveMatrixMaliF16(const GpuInfo& gpu_info) {
 ConvWaveMatrixMaliF16 CreateConvWaveMatrixMaliF16(
     const TensorDescriptor& src_desc, const TensorDescriptor& dst_desc,
     const Convolution2DAttributes& attr) {
-  const auto weights = GetFloatWeights(attr);
-  return ConvWaveMatrixMaliF16(src_desc, dst_desc, weights);
+  ConvWaveMatrixMaliF16 result = ConvWaveMatrixMaliF16(src_desc, dst_desc);
+  result.AddWeights(GetFloatWeights(attr));
+  return result;
 }
 
 }  // namespace ml_drift

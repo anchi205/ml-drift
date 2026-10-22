@@ -39,9 +39,8 @@ class ConvWaveMatrixMaliF16 : public GPUOperation {
   };
 
   ConvWaveMatrixMaliF16() = default;
-  ConvWaveMatrixMaliF16(
-      const TensorDescriptor& src_desc, const TensorDescriptor& dst_desc,
-      const ml_drift::Tensor<OHWI, DataType::kFloat32>& weights);
+  ConvWaveMatrixMaliF16(const TensorDescriptor& src_desc,
+                        const TensorDescriptor& dst_desc);
 
   std::vector<int3> GetPossibleKernelWorkGroups(
       TuningType tuning_type, const GpuInfo& gpu_info,
@@ -54,6 +53,8 @@ class ConvWaveMatrixMaliF16 : public GPUOperation {
   ConvWaveMatrixMaliF16& operator=(ConvWaveMatrixMaliF16&& kernel) = default;
   ConvWaveMatrixMaliF16(const ConvWaveMatrixMaliF16&) = delete;
   ConvWaveMatrixMaliF16& operator=(const ConvWaveMatrixMaliF16&) = delete;
+
+  void AddWeights(const Tensor<OHWI, DataType::kFloat32>& weights);
 
  private:
   KernelParams kernel_params_;
