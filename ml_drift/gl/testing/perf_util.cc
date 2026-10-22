@@ -85,8 +85,7 @@ absl::Status TestConvolutionPerformance(const Convolution2DAttributes& attr,
   descriptor_with_shape.SetBHWCShape(dst_shape);
   ABSL_RETURN_IF_ERROR(CreateTensor(descriptor_with_shape, &dst));
 
-  const auto w_shape =
-      std::visit([](const auto& w) { return w.shape; }, attr.weights);
+  const OHWI& w_shape = attr.GetWeightsShape();
 
   std::cout << "Src size(HWC) - " << src_shape.h << "x" << src_shape.w << "x"
             << src_shape.c << std::endl;
@@ -212,8 +211,7 @@ absl::Status TestDepthwiseConvPerformance(
   descriptor_with_shape.SetBHWCShape(dst_shape);
   ABSL_RETURN_IF_ERROR(CreateTensor(descriptor_with_shape, &dst));
 
-  const auto w_shape =
-      std::visit([](const auto& w) { return w.shape; }, attr.weights);
+  const OHWI& w_shape = attr.GetWeightsShape();
 
   std::cout << "Src size(HWC) - " << src_shape.h << "x" << src_shape.w << "x"
             << src_shape.c << std::endl;

@@ -457,8 +457,7 @@ DepthwiseConv CreateDepthwiseConvolution2D(
     const DepthwiseConvolution2DAttributes& attr) {
   const bool weights_are_buffer = UseBuffersForWeights(gpu_info);
   DepthwiseConv::DepthwiseConvParams params;
-  const auto& weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, attr.weights);
+  const OHWI& weights_shape = attr.GetWeightsShape();
   params.channel_multiplier = weights_shape.o;
   if (gpu_info.IsAMD()) {
     if (attr.strides.w == 1 && attr.strides.h == 1 && attr.dilations.w == 1 &&

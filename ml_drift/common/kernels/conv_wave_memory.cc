@@ -52,18 +52,14 @@ void AppendConditionally(const std::string& value, const std::string& delimiter,
 }
 
 inline bool IsConvKernelXis1(const Convolution2DAttributes& conv_attr) {
-  return std::visit([](const auto& w) { return w.shape.w; },
-                    conv_attr.weights) == 1 &&
-         conv_attr.dilations.w == 1 && conv_attr.strides.w == 1 &&
-         conv_attr.padding.prepended.w == 0 &&
+  return conv_attr.GetWeightsShape().w == 1 && conv_attr.dilations.w == 1 &&
+         conv_attr.strides.w == 1 && conv_attr.padding.prepended.w == 0 &&
          conv_attr.padding.appended.w == 0;
 }
 
 inline bool IsConvKernelYis1(const Convolution2DAttributes& conv_attr) {
-  return std::visit([](const auto& w) { return w.shape.h; },
-                    conv_attr.weights) == 1 &&
-         conv_attr.dilations.h == 1 && conv_attr.strides.h == 1 &&
-         conv_attr.padding.prepended.h == 0 &&
+  return conv_attr.GetWeightsShape().h == 1 && conv_attr.dilations.h == 1 &&
+         conv_attr.strides.h == 1 && conv_attr.padding.prepended.h == 0 &&
          conv_attr.padding.appended.h == 0;
 }
 
@@ -1068,8 +1064,7 @@ ConvWaveMemory CreateConvWaveMemoryExternalWeights(
   conv_params.y_kernel_is_1 = IsConvKernelYis1(attr);
   conv_params.groups_count = attr.groups;
   conv_params.different_weights_for_height = different_weights_for_height;
-  OHWI weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, attr.weights);
+  OHWI weights_shape = attr.GetWeightsShape();
   if (different_weights_for_height) {
     conv_params.x_kernel_is_1 = true;
     conv_params.y_kernel_is_1 = true;

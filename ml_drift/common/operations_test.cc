@@ -179,5 +179,17 @@ TEST(ToFloat32Test, ToFloat32INT4) {
   EXPECT_THAT(result.weights.data,
               Pointwise(FloatNear(1e-5), std::vector<float>{0.0, 2.0}));
 }
+
+TEST(Convolution2DAttributesTest, GetWeightsShape) {
+  Convolution2DAttributes attr;
+  attr.weights = Tensor<OHWI, DataType::kFloat32>{.shape = OHWI(2, 3, 4, 5)};
+  EXPECT_EQ(attr.GetWeightsShape(), OHWI(2, 3, 4, 5));
+
+  attr.weights = Tensor<OHWI, DataType::kInt8>{.shape = OHWI(6, 7, 8, 9)};
+  EXPECT_EQ(attr.GetWeightsShape(), OHWI(6, 7, 8, 9));
+
+  attr.weights = Tensor<OHWI, DataType::kInt4>{.shape = OHWI(10, 11, 12, 13)};
+  EXPECT_EQ(attr.GetWeightsShape(), OHWI(10, 11, 12, 13));
+}
 }  // namespace
 }  // namespace ml_drift

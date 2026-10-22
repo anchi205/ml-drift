@@ -202,8 +202,7 @@ std::string GenerateDepthwiseConvCode(const GpuInfo& gpu_info,
 DepthwiseConvWaveMemory::DepthwiseConvWaveMemory(
     const OperationDef& definition, CalculationsPrecision precision,
     const DepthwiseConvolution2DAttributes& attr, const GpuInfo& gpu_info) {
-  const auto& weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, attr.weights);
+  const OHWI& weights_shape = attr.GetWeightsShape();
   int2 kernel_size = int2(weights_shape.w, weights_shape.h);
   if (gpu_info.IsAdreno()) {
     wave_size_ = 128;
@@ -276,8 +275,7 @@ bool HardwareSupportsDepthwiseConvWaveMemory(const GpuInfo& gpu_info) {
 
 bool IsDepthwiseConvWaveMemorySupported(
     const GpuInfo& gpu_info, const DepthwiseConvolution2DAttributes& attr) {
-  return std::visit([](const auto& w) { return w.shape.o; }, attr.weights) ==
-             1 &&
+  return attr.GetWeightsShape().o == 1 &&
          HardwareSupportsDepthwiseConvWaveMemory(gpu_info);
 }
 

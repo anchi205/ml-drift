@@ -420,8 +420,7 @@ int32_t CalculateOutputSizeBeforeStrides(int32_t input, int32_t kernel,
 template <Axis T>
 int32_t CalculateOutputWithoutStrides(const BHWC& input,
                                       const Convolution2DAttributes& attr) {
-  const OHWI& weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, attr.weights);
+  const OHWI& weights_shape = attr.GetWeightsShape();
   return CalculateOutputSizeBeforeStrides(
       input.get<T>(), weights_shape.get<T>(),
       attr.padding.prepended.get<T>() + attr.padding.appended.get<T>(),
@@ -498,8 +497,7 @@ int32_t CalculateSamePadding(int32_t input, int32_t kernel, int32_t dilation,
 template <Axis AxisT>
 int32_t CalculateSamePadding(const BHWC& input,
                              const Convolution2DAttributes& attr) {
-  const OHWI& weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, attr.weights);
+  const OHWI& weights_shape = attr.GetWeightsShape();
   return CalculateSamePadding(input.get<AxisT>(), weights_shape.get<AxisT>(),
                               attr.dilations.get<AxisT>(),
                               attr.strides.get<AxisT>());
@@ -649,8 +647,7 @@ BHWDC CalculateOutputShape(const BHWDC& input,
 
 BHWC CalculateOutputShape(const BHWC& input,
                           const Convolution2DAttributes& attr) {
-  const OHWI& weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, attr.weights);
+  const OHWI& weights_shape = attr.GetWeightsShape();
   return BHWC(input.b, CalculateOutput<Axis::kHeight>(input, attr),
               CalculateOutput<Axis::kWidth>(input, attr),
               weights_shape.get<Axis::kOutputChannels>());
@@ -681,8 +678,7 @@ BHWDC CalculateOutputShape(const BHWDC& input,
 
 BHWC CalculateOutputShape(const BHWC& input,
                           const DepthwiseConvolution2DAttributes& attr) {
-  const OHWI& weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, attr.weights);
+  const OHWI& weights_shape = attr.GetWeightsShape();
   return BHWC(input.b, CalculateOutput<Axis::kHeight>(input, attr),
               CalculateOutput<Axis::kWidth>(input, attr),
               weights_shape.get<Axis::kOutputChannels>() *
@@ -1173,8 +1169,7 @@ template Tensor<OHWI, DataType::kFloat32> DequantizeTensor<DataType::kInt2>(
     const Tensor<OHWI, DataType::kInt32>& zero_point, bool add_extra_bytes);
 
 bool IsConvEquivalentToFullyConnected(const Convolution2DAttributes& attr) {
-  const auto& weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, attr.weights);
+  const OHWI& weights_shape = attr.GetWeightsShape();
   return weights_shape.w == 1 &&                //
          weights_shape.h == 1 &&                //
          attr.strides == HW(1, 1) &&            //

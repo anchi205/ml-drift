@@ -1182,8 +1182,7 @@ int3 ConvWaveMatrix::GetGridSize() const {
 }
 
 void ConvWaveMatrix::AddConvParams(const Convolution2DAttributes& attr) {
-  const OHWI& weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, attr.weights);
+  const OHWI& weights_shape = attr.GetWeightsShape();
   if (!params_.x_kernel_is_1) {
     args_.AddInt("stride_x", attr.strides.w);
     args_.AddInt("padding_x", -attr.padding.prepended.w);
@@ -1203,8 +1202,7 @@ ConvWaveMatrix CreateConvWaveMatrix(const OperationDef& definition,
                                     const BHWC& dst_shape,
                                     const Convolution2DAttributes& attr,
                                     const GpuInfo& gpu_info) {
-  const OHWI& weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, attr.weights);
+  const OHWI& weights_shape = attr.GetWeightsShape();
   ConvWaveMatrix::ConvParams params;
   params.weights_desc.layout = WeightsLayout::kUnknown;
   params.Init(attr, /*different_weight_for_height=*/false);
@@ -1239,8 +1237,7 @@ ConvWaveMatrix CreateConvWaveMatrixExternalWeights(
     const GpuInfo& gpu_info, const TensorDescriptor* bias,
     const TensorDescriptor* src_exp, bool different_weights_for_height,
     const ConvRuntimeCheckDesc& runtime_check) {
-  const OHWI& weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, attr.weights);
+  const OHWI& weights_shape = attr.GetWeightsShape();
   ConvWaveMatrix::ConvParams params;
   params.weights_desc.layout = WeightsLayout::kUnknown;
   params.Init(attr, different_weights_for_height);
@@ -1409,8 +1406,7 @@ bool SupportsConvWaveMatrix(const GpuInfo& gpu_info,
 bool SupportsConvWaveMatrix(const GpuInfo& gpu_info,
                             CalculationsPrecision precision,
                             const Convolution2DAttributes& attr) {
-  const OHWI& weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, attr.weights);
+  const OHWI& weights_shape = attr.GetWeightsShape();
   if (attr.groups != 1) {
     return false;
   }

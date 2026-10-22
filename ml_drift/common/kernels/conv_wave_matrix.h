@@ -78,8 +78,7 @@ class ConvWaveMatrix : public GPUOperation {
       if (different_weights_for_height) {
         return;
       }
-      const auto& weights_shape =
-          std::visit([](const auto& w) { return w.shape; }, attr.weights);
+      const OHWI& weights_shape = attr.GetWeightsShape();
       x_kernel_is_1 = weights_shape.w == 1 && attr.strides.w == 1 &&
                       attr.dilations.w == 1 && attr.padding.prepended.w == 0 &&
                       attr.padding.appended.w == 0;

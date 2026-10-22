@@ -3454,8 +3454,7 @@ ConvGeneric::ConvParams GetConvParams(const OperationDef& definition,
       int4(attr.padding.prepended.w, attr.padding.prepended.h, 0, 0);
   conv_params.padding_appended =
       int4(attr.padding.appended.w, attr.padding.appended.h, 0, 0);
-  auto weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, attr.weights);
+  const OHWI& weights_shape = attr.GetWeightsShape();
   conv_params.kernel_size = int4(weights_shape.w, weights_shape.h, 1, 1);
   conv_params.dilation = int4(attr.dilations.w, attr.dilations.h, 1, 1);
   conv_params.weights_data_type = DeduceDataTypeFromPrecision(precision);

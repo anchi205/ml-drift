@@ -572,13 +572,10 @@ std::vector<GpuModelBuilder::TensorHandle> GpuModelBuilder::GetWeights(
 std::vector<GpuModelBuilder::TensorHandle> GpuModelBuilder::GetWeights(
     const Convolution2DAttributes& attr, WeightsDescription weights_desc) {
   if (weights_manager_ && weights_manager_->ShouldOffloadPreparationToGPU(
-                              gpu_info_,
-                              std::visit([](const auto& w) { return w.shape; },
-                                         attr.weights),
+                              gpu_info_, attr.GetWeightsShape(),
                               WeightsManager::TargetWeightsType::kStandard)) {
     auto input_weights = AddTensors(GetTensorDescriptorsForWeightsLayout(
-        std::visit([](const auto& w) { return w.shape; }, attr.weights),
-        weights_desc));
+        attr.GetWeightsShape(), weights_desc));
     std::vector<ValueId> weights_ids(input_weights.size());
     for (int i = 0; i < input_weights.size(); ++i) {
       weights_ids[i] = input_weights[i].id;
@@ -618,8 +615,7 @@ std::vector<GpuModelBuilder::TensorHandle> GpuModelBuilder::GetWeights(
 GpuModelBuilder::TensorHandle GpuModelBuilder::Convolution(
     const GpuModelBuilder::TensorHandle& src,
     const Convolution2DAttributes& attr) {
-  const auto& weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, attr.weights);
+  const OHWI& weights_shape = attr.GetWeightsShape();
   BHWC dst_shape = CalculateOutputShape(src.tensor_desc.GetBHWCShape(), attr);
   GpuModelBuilder::TensorHandle dst =
       AddTensor(dst_shape, src.tensor_desc.GetDataType());
@@ -707,8 +703,7 @@ absl::StatusOr<GpuModelBuilder::TensorHandle> GpuModelBuilder::Convolution(
     const GpuModelBuilder::TensorHandle& weights,
     const GpuModelBuilder::TensorHandle* bias,
     const Convolution2DAttributes& attr) {
-  const auto& weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, attr.weights);
+  const OHWI& weights_shape = attr.GetWeightsShape();
   BHWC dst_shape = CalculateOutputShape(src.tensor_desc.GetBHWCShape(), attr);
   const int total_spatial_size = dst_shape.b * dst_shape.h * dst_shape.w;
   if (total_spatial_size <=
@@ -1956,8 +1951,7 @@ GpuModelBuilder::TensorHandle GpuModelBuilder::DepthwiseConvolution(
   BHWC dst_shape = CalculateOutputShape(src.tensor_desc.GetBHWCShape(), attr);
   GpuModelBuilder::TensorHandle dst =
       AddTensor(dst_shape, src.tensor_desc.GetDataType());
-  const auto& weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, attr.weights);
+  const OHWI& weights_shape = attr.GetWeightsShape();
 
   gpu_model_.nodes.push_back({});
   auto& gpu_node = gpu_model_.nodes.back();
@@ -2000,8 +1994,7 @@ GpuModelBuilder::DepthwiseConvolution(
 
   gpu_model_.nodes.push_back({});
   auto& gpu_node = gpu_model_.nodes.back();
-  const auto& dw_weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, attr.weights);
+  const OHWI& dw_weights_shape = attr.GetWeightsShape();
   gpu_node.name = absl::StrCat("depthwise_conv", dw_weights_shape.h, "x",
                                dw_weights_shape.w, "_runtime_weights");
   gpu_node.op_name = attr.op_name;

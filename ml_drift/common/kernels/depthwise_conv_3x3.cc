@@ -332,8 +332,7 @@ bool IsDepthwiseConv3x3Supported(const GpuInfo& gpu_info,
       return false;
     }
   }
-  const auto& weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, attr.weights);
+  const OHWI& weights_shape = attr.GetWeightsShape();
   return weights_shape.o == 1 && attr.dilations.w == 1 &&
          attr.dilations.h == 1 && weights_shape.w == 3 &&
          weights_shape.h == 3 && attr.strides.w == 1 && attr.strides.h == 1 &&

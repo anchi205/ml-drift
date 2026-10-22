@@ -319,6 +319,11 @@ struct Convolution2DAttributes {
   //   weights.h = group_weights.h;
   //   weights.w = group_weights.w;
   std::string op_name;  // optional field for debugging
+
+  const OHWI& GetWeightsShape() const {
+    return std::visit([](const auto& w) -> const OHWI& { return w.shape; },
+                      weights);
+  }
 };
 
 bool IsConvEquivalentToFullyConnected(const Convolution2DAttributes& attr);

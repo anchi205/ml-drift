@@ -206,16 +206,12 @@ std::unique_ptr<SequenceTransformation> NewMergeAddWithConvolution() {
 
 void FuseConvolution2DWithAdd(const ElementwiseAttributes& add_attr,
                               Convolution2DAttributes* attr) {
-  FuseBiasWithAddAttributes(
-      add_attr,
-      std::visit([](const auto& w) { return w.shape; }, attr->weights).o,
-      &attr->bias);
+  FuseBiasWithAddAttributes(add_attr, attr->GetWeightsShape().o, &attr->bias);
 }
 
 void FuseDepthwiseConvolution2DWithAdd(const ElementwiseAttributes& add_attr,
                                        DepthwiseConvolution2DAttributes* attr) {
-  const auto& weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, attr->weights);
+  const OHWI& weights_shape = attr->GetWeightsShape();
   FuseBiasWithAddAttributes(add_attr, weights_shape.o * weights_shape.i,
                             &attr->bias);
 }

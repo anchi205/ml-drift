@@ -88,8 +88,7 @@ bool UseBuffersForWeights(const GpuInfo& gpu_info) {
 void PrepareObjects(const GpuInfo& gpu_info,
                     const DepthwiseConvolution2DAttributes& attr,
                     DataType dst_type, Arguments* args) {
-  const auto& weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, attr.weights);
+  const OHWI& weights_shape = attr.GetWeightsShape();
   const int dst_channels = weights_shape.i * weights_shape.o;
   const int dst_slices = DivideRoundUp(dst_channels, 4);
   const int kernel_x = weights_shape.w;
@@ -134,8 +133,7 @@ void PrepareObjects(const GpuInfo& gpu_info,
 
 bool IsDepthwiseConvTiledSupported(
     const DepthwiseConvolution2DAttributes& attr) {
-  const auto& weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, attr.weights);
+  const OHWI& weights_shape = attr.GetWeightsShape();
   if (weights_shape.o != 1) {
     return false;
   }
@@ -179,8 +177,7 @@ std::unique_ptr<GPUOperation> CreateDepthwiseConvTiled(
     CalculationsPrecision precision,
     const DepthwiseConvolution2DAttributes& attr) {
   DepthwiseConvTiled op;
-  const auto& weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, attr.weights);
+  const OHWI& weights_shape = attr.GetWeightsShape();
   const int dst_slices = DivideRoundUp(weights_shape.i, 4);
   if (gpu_info.IsPowerVR() &&
       gpu_info.powervr_info.gpu_version >= PowerVRGpu::kAXE &&

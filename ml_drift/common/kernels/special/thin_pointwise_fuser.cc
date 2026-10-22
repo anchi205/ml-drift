@@ -67,15 +67,13 @@ std::string MAC(const GpuInfo& gpu_info, const std::string& accum,
 }
 
 bool IsConvKernelXis1(const Convolution2DAttributes& conv_attr) {
-  const OHWI& weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, conv_attr.weights);
+  const OHWI& weights_shape = conv_attr.GetWeightsShape();
   return weights_shape.w == 1 && conv_attr.dilations.w == 1 &&
          conv_attr.strides.w == 1 && conv_attr.padding.prepended.w == 0 &&
          conv_attr.padding.appended.w == 0;
 }
 bool IsConvKernelYis1(const Convolution2DAttributes& conv_attr) {
-  const OHWI& weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, conv_attr.weights);
+  const OHWI& weights_shape = conv_attr.GetWeightsShape();
   return weights_shape.h == 1 && conv_attr.dilations.h == 1 &&
          conv_attr.strides.h == 1 && conv_attr.padding.prepended.h == 0 &&
          conv_attr.padding.appended.h == 0;
@@ -86,8 +84,7 @@ bool IsConv1x1(const Convolution2DAttributes& conv_attr) {
 }
 
 int GetConvWeightsCount(const Convolution2DAttributes& attr) {
-  const OHWI& weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, attr.weights);
+  const OHWI& weights_shape = attr.GetWeightsShape();
   int conv_src_ch_aligned = AlignByN(weights_shape.i, 4);
   int conv_dst_ch_aligned = AlignByN(weights_shape.o, 4);
   return conv_dst_ch_aligned + conv_src_ch_aligned * conv_dst_ch_aligned *
@@ -100,8 +97,7 @@ int GetConvWeightsSize(const Convolution2DAttributes& attr,
 }
 
 int GetDepthwiseConvWeightsCount(const DepthwiseConvolution2DAttributes& attr) {
-  const OHWI& weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, attr.weights);
+  const OHWI& weights_shape = attr.GetWeightsShape();
   int dw_dst_ch_aligned = AlignByN(weights_shape.i, 4);
   return dw_dst_ch_aligned +
          dw_dst_ch_aligned * weights_shape.h * weights_shape.w;
@@ -187,8 +183,7 @@ class ThinPointwiseFuser {
 
 void ThinPointwiseFuser::AddDepthwiseConvData(
     const DepthwiseConvolution2DAttributes& dw_attr) {
-  const OHWI& dw_weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, dw_attr.weights);
+  const OHWI& dw_weights_shape = dw_attr.GetWeightsShape();
   const int dst_slices = DivideRoundUp(dw_weights_shape.i, 4);
   const int dw_weights_count = GetDepthwiseConvWeightsCount(dw_attr);
   gpu_data_.reserve(gpu_data_.size() + dw_weights_count);
@@ -221,8 +216,7 @@ void ThinPointwiseFuser::AddDepthwiseConvData(
 
 void ThinPointwiseFuser::AddConv1x1Data(
     const Convolution2DAttributes& conv_attr) {
-  const OHWI& conv_weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, conv_attr.weights);
+  const OHWI& conv_weights_shape = conv_attr.GetWeightsShape();
   const int src_slices = DivideRoundUp(conv_weights_shape.i, 4);
   const int dst_slices = DivideRoundUp(conv_weights_shape.o, 4);
   const int weights_count = GetConvWeightsCount(conv_attr);
@@ -258,8 +252,7 @@ void ThinPointwiseFuser::AddConv1x1Data(
 
 void ThinPointwiseFuser::AddConv2dData(
     const Convolution2DAttributes& conv_attr) {
-  const OHWI& conv_weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, conv_attr.weights);
+  const OHWI& conv_weights_shape = conv_attr.GetWeightsShape();
   const int src_slices = DivideRoundUp(conv_weights_shape.i, 4);
   const int dst_slices = DivideRoundUp(conv_weights_shape.o, 4);
   const int weights_count = GetConvWeightsCount(conv_attr);
@@ -384,8 +377,7 @@ bool ThinPointwiseFuser::IsNodeSupported(const GpuInfo& gpu_info,
     DepthwiseConvolution2DAttributes* dw_attr =
         std::any_cast<DepthwiseConvolution2DAttributes>(
             &node->operation.attributes);
-    const auto dw_shape =
-        std::visit([](const auto& w) { return w.shape; }, dw_attr->weights);
+    const OHWI& dw_shape = dw_attr->GetWeightsShape();
     bool good_dw = dw_shape.o == 1;
     if (!good_dw) {
       return false;
@@ -454,8 +446,7 @@ bool ThinPointwiseFuser::IsNodeSupported(const GpuInfo& gpu_info,
         buffer_size_ + weights_size > max_buffer_size) {
       return false;
     }
-    const auto conv_shape =
-        std::visit([](const auto& w) { return w.shape; }, conv_attr->weights);
+    const OHWI& conv_shape = conv_attr->GetWeightsShape();
     const int kernel_size = conv_shape.i * conv_shape.w * conv_shape.h;
     if (gpu_info.IsApple() || gpu_info.IsIntel()) {
       if (precision_ == CalculationsPrecision::kF16) {
@@ -522,15 +513,11 @@ uint64_t ThinPointwiseFuser::GetNodeFlops(Node* node) const {
     DepthwiseConvolution2DAttributes* attr =
         std::any_cast<DepthwiseConvolution2DAttributes>(
             &node->operation.attributes);
-    return GetDepthwiseConvolutionFlops(
-        output_shape,
-        std::visit([](const auto& w) { return w.shape; }, attr->weights));
+    return GetDepthwiseConvolutionFlops(output_shape, attr->GetWeightsShape());
   } else if (op_type == OperationType::kConvolution2D) {
     Convolution2DAttributes* attr =
         std::any_cast<Convolution2DAttributes>(&node->operation.attributes);
-    return GetConvolutionFlops(
-        output_shape,
-        std::visit([](const auto& w) { return w.shape; }, attr->weights));
+    return GetConvolutionFlops(output_shape, attr->GetWeightsShape());
   }
   return 0;
 }
@@ -603,8 +590,7 @@ void ThinPointwiseFuser::AddDepthwiseConvNode(
   args_.AddInt("dilation_y", attr.dilations.h);
 
   const auto& src_desc = op_def_.src_tensors[0];
-  const auto& weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, attr.weights);
+  const OHWI& weights_shape = attr.GetWeightsShape();
   int intermediate_depth = DivideRoundUp(weights_shape.i, 4);
   for (int d = 0; d < intermediate_depth; ++d) {
     outputs_.push_back(absl::StrCat("dw_res_", d));
@@ -729,8 +715,7 @@ void ThinPointwiseFuser::AddConv1x1Node(const GpuInfo& gpu_info,
                                         bool last_op) {
   AddConv1x1Data(attr);
   op_name_ += "->conv1x1";
-  const auto& weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, attr.weights);
+  const OHWI& weights_shape = attr.GetWeightsShape();
   const int src_slices = DivideRoundUp(weights_shape.i, 4);
   const int dst_slices = DivideRoundUp(weights_shape.o, 4);
   std::vector<std::string> inputs = outputs_;
@@ -777,8 +762,7 @@ void ThinPointwiseFuser::AddConv2dNode(const GpuInfo& gpu_info,
   } else {
     op_name_ += "conv2d";
   }
-  const auto& weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, attr.weights);
+  const OHWI& weights_shape = attr.GetWeightsShape();
   const int src_slices = DivideRoundUp(weights_shape.i, 4);
   const int dst_slices = DivideRoundUp(weights_shape.o, 4);
   args_.AddInt("stride_x", attr.strides.w);
@@ -1098,8 +1082,7 @@ class ThinPointwiseFuserIr {
 
 void ThinPointwiseFuserIr::AddDepthwiseConvData(
     const DepthwiseConvolution2DAttributes& dw_attr) {
-  const OHWI& dw_weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, dw_attr.weights);
+  const OHWI& dw_weights_shape = dw_attr.GetWeightsShape();
   const int dst_slices = DivideRoundUp(dw_weights_shape.i, 4);
   const int dw_weights_count = GetDepthwiseConvWeightsCount(dw_attr);
   gpu_data_.reserve(gpu_data_.size() + dw_weights_count);
@@ -1132,8 +1115,7 @@ void ThinPointwiseFuserIr::AddDepthwiseConvData(
 
 void ThinPointwiseFuserIr::AddConv1x1Data(
     const Convolution2DAttributes& conv_attr) {
-  const OHWI& conv_weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, conv_attr.weights);
+  const OHWI& conv_weights_shape = conv_attr.GetWeightsShape();
   const int src_slices = DivideRoundUp(conv_weights_shape.i, 4);
   const int dst_slices = DivideRoundUp(conv_weights_shape.o, 4);
   const int weights_count = GetConvWeightsCount(conv_attr);
@@ -1169,8 +1151,7 @@ void ThinPointwiseFuserIr::AddConv1x1Data(
 
 void ThinPointwiseFuserIr::AddConv2dData(
     const Convolution2DAttributes& conv_attr) {
-  const OHWI& conv_weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, conv_attr.weights);
+  const OHWI& conv_weights_shape = conv_attr.GetWeightsShape();
   const int src_slices = DivideRoundUp(conv_weights_shape.i, 4);
   const int dst_slices = DivideRoundUp(conv_weights_shape.o, 4);
   const int weights_count = GetConvWeightsCount(conv_attr);
@@ -1295,8 +1276,7 @@ bool ThinPointwiseFuserIr::IsOpSupported(const GpuInfo& gpu_info,
     }
     DepthwiseConvolution2DAttributes* dw_attr =
         std::any_cast<DepthwiseConvolution2DAttributes>(&op->attr);
-    const auto dw_shape =
-        std::visit([](const auto& w) { return w.shape; }, dw_attr->weights);
+    const OHWI& dw_shape = dw_attr->GetWeightsShape();
     bool good_dw = dw_shape.o == 1;
     if (!good_dw) {
       return false;
@@ -1365,8 +1345,7 @@ bool ThinPointwiseFuserIr::IsOpSupported(const GpuInfo& gpu_info,
         buffer_size_ + weights_size > max_buffer_size) {
       return false;
     }
-    const auto conv_shape =
-        std::visit([](const auto& w) { return w.shape; }, conv_attr->weights);
+    const OHWI& conv_shape = conv_attr->GetWeightsShape();
     const int kernel_size = conv_shape.i * conv_shape.w * conv_shape.h;
     if (gpu_info.IsApple() || gpu_info.IsIntel()) {
       if (precision_ == CalculationsPrecision::kF16) {
@@ -1431,15 +1410,11 @@ uint64_t ThinPointwiseFuserIr::GetOpFlops(ir::IrOp* op) const {
   if (op_type == OperationType::kDepthwiseConvolution) {
     DepthwiseConvolution2DAttributes* attr =
         std::any_cast<DepthwiseConvolution2DAttributes>(&op->attr);
-    return GetDepthwiseConvolutionFlops(
-        output_shape,
-        std::visit([](const auto& w) { return w.shape; }, attr->weights));
+    return GetDepthwiseConvolutionFlops(output_shape, attr->GetWeightsShape());
   } else if (op_type == OperationType::kConvolution2D) {
     Convolution2DAttributes* attr =
         std::any_cast<Convolution2DAttributes>(&op->attr);
-    return GetConvolutionFlops(
-        output_shape,
-        std::visit([](const auto& w) { return w.shape; }, attr->weights));
+    return GetConvolutionFlops(output_shape, attr->GetWeightsShape());
   }
   return 0;
 }
@@ -1508,8 +1483,7 @@ void ThinPointwiseFuserIr::AddDepthwiseConvOp(
   args_.AddInt("dilation_y", attr.dilations.h);
 
   const auto& src_desc = op_def_.src_tensors[0];
-  const auto& weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, attr.weights);
+  const OHWI& weights_shape = attr.GetWeightsShape();
   int intermediate_depth = DivideRoundUp(weights_shape.i, 4);
   for (int d = 0; d < intermediate_depth; ++d) {
     outputs_.push_back(absl::StrCat("dw_res_", d));
@@ -1634,8 +1608,7 @@ void ThinPointwiseFuserIr::AddConv1x1Op(const GpuInfo& gpu_info,
                                         bool last_op) {
   AddConv1x1Data(attr);
   op_name_ += "->conv1x1";
-  const auto& weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, attr.weights);
+  const OHWI& weights_shape = attr.GetWeightsShape();
   const int src_slices = DivideRoundUp(weights_shape.i, 4);
   const int dst_slices = DivideRoundUp(weights_shape.o, 4);
   std::vector<std::string> inputs = outputs_;
@@ -1682,8 +1655,7 @@ void ThinPointwiseFuserIr::AddConv2dOp(const GpuInfo& gpu_info,
   } else {
     op_name_ += "conv2d";
   }
-  const auto& weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, attr.weights);
+  const OHWI& weights_shape = attr.GetWeightsShape();
   const int src_slices = DivideRoundUp(weights_shape.i, 4);
   const int dst_slices = DivideRoundUp(weights_shape.o, 4);
   args_.AddInt("stride_x", attr.strides.w);

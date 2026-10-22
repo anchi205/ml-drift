@@ -317,8 +317,7 @@ void GenerateData(absl::BitGenRef gen, bool* data, int size) {
 float GetEpsilon(CalculationsPrecision precision, const GpuInfo& gpu_info,
                  const Convolution2DAttributes& attr) {
   return GetEpsilon(precision, gpu_info) *
-         GetMADSAmount(
-             std::visit([](const auto& w) { return w.shape; }, attr.weights));
+         GetMADSAmount(attr.GetWeightsShape());
 }
 
 float GetEpsilon(CalculationsPrecision precision, const GpuInfo& gpu_info,
@@ -333,8 +332,7 @@ float GetEpsilon(CalculationsPrecision precision, const GpuInfo& gpu_info,
 
 float GetEpsilon(CalculationsPrecision precision, const GpuInfo& gpu_info,
                  const DepthwiseConvolution2DAttributes& attr) {
-  const auto& weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, attr.weights);
+  const OHWI& weights_shape = attr.GetWeightsShape();
   return GetEpsilon(precision, gpu_info) *
          (weights_shape.h * weights_shape.w + 1);
 }

@@ -101,8 +101,7 @@ std::string ReadFloatWeights(const ConvAppleMPP::ConvParams& params) {
 }
 
 void AddXKernelParams(const Convolution2DAttributes& attr, GPUOperation* op) {
-  const OHWI& weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, attr.weights);
+  const OHWI& weights_shape = attr.GetWeightsShape();
   op->args_.AddInt("stride_x", attr.strides.w);
   op->args_.AddInt("padding_x", -attr.padding.prepended.w);
   op->args_.AddInt("kernel_size_x", weights_shape.w);
@@ -110,8 +109,7 @@ void AddXKernelParams(const Convolution2DAttributes& attr, GPUOperation* op) {
 }
 
 void AddYKernelParams(const Convolution2DAttributes& attr, GPUOperation* op) {
-  const OHWI& weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, attr.weights);
+  const OHWI& weights_shape = attr.GetWeightsShape();
   op->args_.AddInt("stride_y", attr.strides.h);
   op->args_.AddInt("padding_y", -attr.padding.prepended.h);
   op->args_.AddInt("kernel_size_y", weights_shape.h);
@@ -529,8 +527,7 @@ bool SupportsConvAppleMPP(const GpuInfo& gpu_info,
 ConvAppleMPP CreateConvAppleMPP(const TensorDescriptor& src,
                                 const TensorDescriptor& dst,
                                 const Convolution2DAttributes& attr) {
-  const OHWI& weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, attr.weights);
+  const OHWI& weights_shape = attr.GetWeightsShape();
 
   ConvAppleMPP::ConvParams params;
   params.weights_desc.layout = WeightsLayout::kUnknown;

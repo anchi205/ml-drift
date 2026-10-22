@@ -287,8 +287,7 @@ bool IsConvConstantsSupported(const GpuInfo& gpu_info,
     return false;
   }
 
-  const auto& weights_shape =
-      std::visit([](const auto& w) { return w.shape; }, attr.weights);
+  const OHWI& weights_shape = attr.GetWeightsShape();
   const int filters_count = AlignByN(weights_shape.DimensionsProduct(), 4);
   const int float_size =
       precision == CalculationsPrecision::kF32 ? sizeof(float) : sizeof(half);
@@ -304,8 +303,7 @@ ConvConstants::ConvConstants(const GpuInfo& gpu_info,
                              const Convolution2DAttributes& attr,
                              bool has_bias) {
   weights_data_type_ = DeduceDataTypeFromPrecision(precision);
-  weights_shape_ =
-      std::visit([](const auto& w) { return w.shape; }, attr.weights);
+  weights_shape_ = attr.GetWeightsShape();
   // intentionally disabled version
   src_local_memory_caching_ =
       gpu_info.IsAMD() && gpu_info.IsNvidia() && weights_shape_.w == 3 &&

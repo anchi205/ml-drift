@@ -108,10 +108,8 @@ std::unique_ptr<GPUOperation> SelectConvolutionApple(
     const GpuInfo& gpu_info, const OperationDef& op_def,
     CalculationsPrecision precision) {
   if (SupportsConvWaveMatrix(gpu_info, precision, attr) &&
-      IsGoodTaskSizeForAppleConvSimd(
-          dst_shape,
-          std::visit([](const auto& w) { return w.shape; }, attr.weights),
-          precision, gpu_info)) {
+      IsGoodTaskSizeForAppleConvSimd(dst_shape, attr.GetWeightsShape(),
+                                     precision, gpu_info)) {
     ConvWaveMatrix conv =
         CreateConvWaveMatrix(op_def, precision, dst_shape, attr, gpu_info);
     return std::make_unique<ConvWaveMatrix>(std::move(conv));
@@ -130,10 +128,8 @@ std::unique_ptr<GPUOperation> SelectConvolutionExternalWeightsApple(
     bool different_weights_for_height,
     const ConvRuntimeCheckDesc& runtime_check) {
   if (SupportsConvWaveMatrix(gpu_info, precision, attr) &&
-      IsGoodTaskSizeForAppleConvSimd(
-          dst_shape,
-          std::visit([](const auto& w) { return w.shape; }, attr.weights),
-          precision, gpu_info)) {
+      IsGoodTaskSizeForAppleConvSimd(dst_shape, attr.GetWeightsShape(),
+                                     precision, gpu_info)) {
     ConvWaveMatrix conv = CreateConvWaveMatrixExternalWeights(
         op_def, precision, dst_shape, attr, gpu_info, bias_desc, src_exp,
         different_weights_for_height, runtime_check);

@@ -475,8 +475,7 @@ TEST_P(ConvolutionFloatTest, ConvolutionGenericExternalBatchedWeights) {
   attr.strides = HW(1, 1);
   attr.dilations = HW(1, 1);
   attr.weights = MakeSyntheticTensor(OHWI(64, 6, 1, src_shape.c));
-  attr.bias = MakeZeroTensor(Linear(
-      std::visit([](auto& w) -> auto& { return w.shape; }, attr.weights).o));
+  attr.bias = MakeZeroTensor(Linear(attr.GetWeightsShape().o));
 
   TensorFloat32 src_tensor = MakeSyntheticTensor(src_shape);
 
