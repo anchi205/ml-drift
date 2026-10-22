@@ -543,40 +543,4 @@ int3 GetFirstSuitableWorkGroup(const std::vector<int3>& wgs, int max_wg_size) {
   return {1, 1, 1};
 }
 
-int3 ClampWorkGroupSize(const int3& wg_size, const GpuInfo& gpu_info,
-                        const KernelInfo& kernel_info) {
-  int3 wg = wg_size;
-  if (gpu_info.GetMaxWorkGroupSizeForX() > 0) {
-    wg.x = std::min(wg.x, gpu_info.GetMaxWorkGroupSizeForX());
-  }
-  if (gpu_info.GetMaxWorkGroupSizeForY() > 0) {
-    wg.y = std::min(wg.y, gpu_info.GetMaxWorkGroupSizeForY());
-  }
-  if (gpu_info.GetMaxWorkGroupSizeForZ() > 0) {
-    wg.z = std::min(wg.z, gpu_info.GetMaxWorkGroupSizeForZ());
-  }
-  int max_total_size = kernel_info.max_work_group_size;
-  if (gpu_info.GetMaxWorkGroupTotalSize() > 0) {
-    max_total_size =
-        max_total_size > 0
-            ? std::min(max_total_size, gpu_info.GetMaxWorkGroupTotalSize())
-            : gpu_info.GetMaxWorkGroupTotalSize();
-  }
-  if (max_total_size > 0) {
-    // Reduce largest dimension if the total size is too big.
-    while (wg.x * wg.y * wg.z > max_total_size) {
-      if (wg.z >= wg.x && wg.z >= wg.y && wg.z > 1) {
-        wg.z /= 2;
-      } else if (wg.y >= wg.x && wg.y > 1) {
-        wg.y /= 2;
-      } else if (wg.x > 1) {
-        wg.x /= 2;
-      } else {
-        break;
-      }
-    }
-  }
-  return wg;
-}
-
 }  // namespace ml_drift

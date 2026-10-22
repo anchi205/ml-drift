@@ -84,31 +84,4 @@ TEST(WorkGroupPickingTest, GetPossibleWorkGroupsPerDimAndKernelLimits) {
             kernel_info.max_work_group_size);
 }
 
-TEST(WorkGroupPickingTest, ClampWorkGroupSize) {
-  ml_drift::GpuInfo gpu_info;
-  gpu_info.gpu_api = ml_drift::GpuApi::kOpenCl;
-  gpu_info.opencl_info.max_work_group_size_x = 1024;
-  gpu_info.opencl_info.max_work_group_size_y = 1024;
-  gpu_info.opencl_info.max_work_group_size_z = 64;
-  gpu_info.opencl_info.max_work_group_total_size = 2048;
-  ml_drift::KernelInfo kernel_info;
-  kernel_info.max_work_group_size = 2048;
-
-  // Per-dimension clamp (1352 -> 1024).
-  EXPECT_EQ(ml_drift::ClampWorkGroupSize(ml_drift::int3(1352, 1, 1), gpu_info,
-                                         kernel_info),
-            ml_drift::int3(1024, 1, 1));
-
-  // Kernel-specific total work-group size clamp (1024 -> 512).
-  kernel_info.max_work_group_size = 512;
-  EXPECT_EQ(ml_drift::ClampWorkGroupSize(ml_drift::int3(1024, 1, 1), gpu_info,
-                                         kernel_info),
-            ml_drift::int3(512, 1, 1));
-
-  // Multi-dimensional total work-group size clamp ({32, 32, 2} = 2048 -> 512).
-  const auto clamped = ml_drift::ClampWorkGroupSize(ml_drift::int3(32, 32, 2),
-                                                    gpu_info, kernel_info);
-  EXPECT_EQ(clamped, ml_drift::int3(16, 16, 2));
-}
-
 }  // namespace

@@ -54,11 +54,6 @@ std::vector<int3> GetPossibleWorkGroupsConv(TuningType tuning_type,
 // if no suitable groups among wgs, returns {1, 1, 1}
 int3 GetFirstSuitableWorkGroup(const std::vector<int3>& wgs, int max_wg_size);
 
-// Clamps work_group_size to per-dimension device limits and the minimum of
-// device and kernel total work-group size limits.
-int3 ClampWorkGroupSize(const int3& wg_size, const GpuInfo& gpu_info,
-                        const KernelInfo& kernel_info);
-
 }  // namespace ml_drift
 
 #endif  // ML_DRIFT_COMMON_TASK_WORK_GROUP_PICKING_H_
