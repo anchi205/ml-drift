@@ -478,7 +478,8 @@ absl::Status Diffuser::UNet::Init(const Diffuser::Config& runner_config,
       (create_info.precision == CalculationsPrecision::kF32F16);
   ml_drift::GpuModelBuilder step_builder(gpu_info, options);
 
-  index_val_ = step_builder.AddTensor(BHWC(1, 1, 1, 4), DataType::kFloat32);
+  index_val_ = step_builder.AddTensor(1, 1, 1, 1, TensorStorageType::kBuffer,
+                                      DataType::kFloat32);
   ABSL_ASSIGN_OR_RETURN(
       auto result_or,
       step_builder.AppendOp(
@@ -488,15 +489,16 @@ absl::Status Diffuser::UNet::Init(const Diffuser::Config& runner_config,
             static_cast<int>(GetFastestStorageType(gpu_info))}}));
   temb_ = result_or[0];
 
-  guidance_scale_ =
-      step_builder.AddTensor(BHWC(1, 1, 1, 4), DataType::kFloat32);
-  sqrt_alpha_ = step_builder.AddTensor(BHWC(1, 1, 1, 4), DataType::kFloat32);
-  sqrt_alpha_prev_ =
-      step_builder.AddTensor(BHWC(1, 1, 1, 4), DataType::kFloat32);
-  sqrt_one_minus_alpha_ =
-      step_builder.AddTensor(BHWC(1, 1, 1, 4), DataType::kFloat32);
-  sqrt_one_minus_alpha_prev_ =
-      step_builder.AddTensor(BHWC(1, 1, 1, 4), DataType::kFloat32);
+  guidance_scale_ = step_builder.AddTensor(
+      1, 1, 1, 1, TensorStorageType::kBuffer, DataType::kFloat32);
+  sqrt_alpha_ = step_builder.AddTensor(1, 1, 1, 1, TensorStorageType::kBuffer,
+                                       DataType::kFloat32);
+  sqrt_alpha_prev_ = step_builder.AddTensor(
+      1, 1, 1, 1, TensorStorageType::kBuffer, DataType::kFloat32);
+  sqrt_one_minus_alpha_ = step_builder.AddTensor(
+      1, 1, 1, 1, TensorStorageType::kBuffer, DataType::kFloat32);
+  sqrt_one_minus_alpha_prev_ = step_builder.AddTensor(
+      1, 1, 1, 1, TensorStorageType::kBuffer, DataType::kFloat32);
   if (runner_config.run_unet_with_plugins) {
     ABSL_RETURN_IF_ERROR(builder.BuildUNetWithPlugins(
         config, gpu_info, create_info, width, height, &step_builder, &src_,
@@ -635,8 +637,8 @@ absl::Status Diffuser::UNet::Execute(CLCommandQueue* queue, int step_index,
                                      float sqrt_one_minus_alpha_prev) {
   {
     TensorFloat32 scalar_tensor;
-    scalar_tensor.shape = BHWC(1, 1, 1, 4);
-    scalar_tensor.data.resize(4, 0.0f);
+    scalar_tensor.shape = BHWC(1, 1, 1, 1);
+    scalar_tensor.data.resize(1, 0.0f);
     scalar_tensor.data[0] = static_cast<float>(step_index);
     ABSL_RETURN_IF_ERROR(
         inference_context_.SetInputTensor(index_val_.id, scalar_tensor, queue));

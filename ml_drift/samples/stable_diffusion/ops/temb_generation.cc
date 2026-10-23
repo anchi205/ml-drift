@@ -18,6 +18,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "ml_drift/common/op_api.h"
 #include "ml_drift/common/shape.h"
@@ -34,7 +35,7 @@ std::string GetTembGenerationCode() {
     if (X >= args.dst.Width() || Y >= args.dst.Height() ||
         S >= args.dst.Slices())
       return;
-  float index_val = args.index_val.Read(0, 0, 0).x;
+  float index_val = args.index_val.Read(0);
   if (S < args.half_slices) {
     args.dst::type result = ucl::Convert<args.dst::type>(
         cos(args.coeffs.Read(S) * index_val));
@@ -94,7 +95,7 @@ class TembGeneration : public OpBase {
                                       std::move(coeffs_tensor_desc)));
     op->args_.AddInt("half_slices", half_slices);
 
-    AddSrcTensor(graph, op, "index_val", inputs[0]);
+    AddSrcBuffer(graph, op, "index_val", inputs[0]);
     AddDstTensor(graph, op, "dst", outputs[0]);
 
     const auto& dst_shape = outputs[0].tensor_desc.GetBHWCShape();
