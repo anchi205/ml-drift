@@ -500,7 +500,11 @@ int3 ConvAppleMPP::GetGridSize() const {
   return int3(groups_x * work_group_size_.x, groups_y, groups_z);
 }
 
-bool SupportsConvAppleMPP(const GpuInfo& gpu_info) {
+bool SupportsConvAppleMPP(const GpuInfo& gpu_info, const BHWC& src_shape) {
+  const int src_slices = DivideRoundUp(src_shape.c, 4);
+  if (src_slices % 8 != 0) {
+    return false;
+  }
   return gpu_info.IsApiMetal() && gpu_info.IsApple() &&
          gpu_info.apple_info.gpu_family >= AppleInfo::Family::kApple10 &&
          gpu_info.metal_info.IsMslVersionEqualOrHigher(4, 0);
@@ -508,7 +512,7 @@ bool SupportsConvAppleMPP(const GpuInfo& gpu_info) {
 
 bool SupportsConvAppleMPP(const GpuInfo& gpu_info,
                           const ExternalWeights& weights) {
-  if (!SupportsConvAppleMPP(gpu_info)) {
+  if (!SupportsConvAppleMPP(gpu_info, BHWC(1, 1, 1, weights.shape.i))) {
     return false;
   }
   const bool supported_type = weights.desc.type == DataType::kFloat32 ||

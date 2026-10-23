@@ -1102,9 +1102,9 @@ GpuModelBuilder::FullyConnectedSrcFloatExternalWeightsWithConversion(
   const auto conv_precision =
         GetConvPrecision(src.tensor_desc.GetDataType());
 
-  const bool use_apple_mpp = SupportsConvAppleMPP(gpu_info_) &&
-                             conv_precision == CalculationsPrecision::kF16 &&
-                             src.tensor_desc.GetBHWCShape().c % 32 == 0;
+  const bool use_apple_mpp =
+      SupportsConvAppleMPP(gpu_info_, src.tensor_desc.GetBHWCShape()) &&
+      conv_precision == CalculationsPrecision::kF16;
   auto src_handle = use_apple_mpp && !src_exp ? ToDHWBCC4(src) : src;
 
   const bool ringed_weights = runtime_check.ring_o_offset_index.has_value() ||
@@ -1315,7 +1315,7 @@ GpuModelBuilder::FullyConnectedInt8QuantizedWithSrcQuantization(
   const bool calculate_sum = weights.zero_point.has_value() || use_uint8_math;
   auto outputs = Quantize(src, src_packed_type, calculate_sum);
   auto src_quantized = outputs[0];
-  if (SupportsConvAppleMPP(gpu_info_)) {
+  if (SupportsConvAppleMPP(gpu_info_, src_shape)) {
     src_quantized = ToDHWBCC4(src_quantized);
   }
   auto src_params = outputs[1];
